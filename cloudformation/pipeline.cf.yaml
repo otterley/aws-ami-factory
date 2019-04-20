@@ -1,0 +1,371 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: AMI build and test pipeline
+
+Parameters:
+  AmiName:
+    Description: Name of AMI
+    Type: String
+  SourceS3BucketName:
+    Description: Name of S3 bucket used to hold AMI source code
+    Type: String
+  SourceS3Key:
+    Description: Name of S3 object key containing AMI source code ZIP file
+    Type: String
+  CloudTrailS3BucketName:
+    Description: Name of S3 bucket used by CloudTrail to record source code uploads
+    Type: String
+  ArtifactS3BucketName:
+    Description: Name of S3 bucket used to store pipeline artifacts
+    Type: String
+  BuildSubnetId:
+    Description: Public subnet ID in which EC2 build and test instances will be launched
+    Type: AWS::EC2::Subnet::Id
+  BuildTimeout:
+    Description: Build timeout, in minutes
+    Type: Number
+    Default: "60"
+  LogRetentionInDays:
+    Description: Log retention period, in days
+    Type: Number
+    Default: "365"
+
+Resources:
+  SourceS3Bucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref SourceS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      AccessControl: BucketOwnerFullControl
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  ArtifactS3Bucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref ArtifactS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      AccessControl: BucketOwnerFullControl
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            ExpirationInDays: !Ref LogRetentionInDays
+
+  CloudTrailS3Bucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref CloudTrailS3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      AccessControl: BucketOwnerFullControl
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            ExpirationInDays: !Ref LogRetentionInDays
+
+  CloudTrailS3BucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket: !Ref CloudTrailS3Bucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !Sub "arn:aws:s3:::${CloudTrailS3Bucket}"
+          - Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "arn:aws:s3:::${CloudTrailS3Bucket}/AWSLogs/${AWS::AccountId}/*"
+            Condition:
+              StringEquals:
+                "s3:x-amz-acl": bucket-owner-full-control
+
+  AmiBuildPipeline:
+    Type: "AWS::CodePipeline::Pipeline"
+    Properties:
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactS3Bucket
+      Name: !Sub "AmiBuilder-${AmiName}"
+      RoleArn: !GetAtt AmiBuildPipelineRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: S3
+                Version: "1"
+              Configuration:
+                S3Bucket: !Ref SourceS3Bucket
+                S3ObjectKey: !Ref SourceS3Key
+                PollForSourceChanges: false
+              OutputArtifacts:
+                - Name: Source
+        - Name: Build
+          Actions:
+            - Name: Build
+              InputArtifacts:
+                - Name: Source
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName: !Ref AmiBuildProject
+              OutputArtifacts:
+                - Name: TestSuite
+        - Name: Test
+          Actions:
+            - Name: Test
+              InputArtifacts:
+                - Name: TestSuite
+              ActionTypeId:
+                Category: Test
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName: !Ref AmiTestProject
+
+  AmiBuildPipelineRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: codepipeline.amazonaws.com
+      Policies:
+        - PolicyName: Pipeline
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Effect: Allow
+                Resource:
+                  - !GetAtt AmiBuildProject.Arn
+                  - !GetAtt AmiTestProject.Arn
+              - Action:
+                  - s3:*
+                Effect: Allow
+                Resource:
+                  - !Sub "arn:aws:s3:::${SourceS3Bucket}"
+                  - !Sub "arn:aws:s3:::${SourceS3Bucket}/*"
+                  - !Sub "arn:aws:s3:::${ArtifactS3Bucket}"
+                  - !Sub "arn:aws:s3:::${ArtifactS3Bucket}/*"
+
+  AmiBuildProject:
+    Type: "AWS::CodeBuild::Project"
+    Properties:
+      Description: !Sub "AMI Build - ${AmiName}"
+      Source:
+        Type: CODEPIPELINE
+      Name: !Sub "AmiBuild-${AmiName}"
+      Artifacts:
+        ArtifactIdentifier: manifest
+        Type: CODEPIPELINE
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Ref CodeBuildLogGroup
+          StreamName: Build
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Type: LINUX_CONTAINER
+        Image: otterley/ami-pipeline-builder:latest
+        ImagePullCredentialsType: CODEBUILD
+        EnvironmentVariables:
+          - Name: SUBNET_ID
+            Value: !Ref BuildSubnetId
+      TimeoutInMinutes: !Ref BuildTimeout
+
+  AmiTestProject:
+    Type: "AWS::CodeBuild::Project"
+    Properties:
+      Description: !Sub "AMI Test - ${AmiName}"
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: test/buildspec.yml
+      Name: !Sub "AmiTest-${AmiName}"
+      Artifacts:
+        ArtifactIdentifier: manifest
+        Type: CODEPIPELINE
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Ref CodeBuildLogGroup
+          StreamName: Test
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Type: LINUX_CONTAINER
+        Image: otterley/ami-pipeline-inspec-test:latest
+        ImagePullCredentialsType: CODEBUILD
+        EnvironmentVariables:
+          - Name: SUBNET_ID
+            Value: !Ref BuildSubnetId
+      TimeoutInMinutes: !Ref BuildTimeout
+
+  CodeBuildLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/codebuild/AmiBuild-${AmiName}"
+      RetentionInDays: !Ref LogRetentionInDays
+
+  CodeBuildRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: codebuild.amazonaws.com
+      Policies:
+        - PolicyName: PackerBuild
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogStream
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CodeBuildLogGroup}:log-stream:*"
+              - Action:
+                  - s3:*
+                Effect: Allow
+                Resource:
+                  - !Sub "arn:aws:s3:::${ArtifactS3Bucket}"
+                  - !Sub "arn:aws:s3:::${ArtifactS3Bucket}/*"
+              - Effect: Allow
+                Resource: "*"
+                Action:
+                  - ec2:AttachVolume
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:CopyImage
+                  - ec2:CreateImage
+                  - ec2:CreateKeypair
+                  - ec2:CreateSecurityGroup
+                  - ec2:CreateSnapshot
+                  - ec2:CreateTags
+                  - ec2:CreateVolume
+                  - ec2:DeleteKeyPair
+                  - ec2:DeleteSecurityGroup
+                  - ec2:DeleteSnapshot
+                  - ec2:DeleteVolume
+                  - ec2:DeregisterImage
+                  - ec2:DescribeImageAttribute
+                  - ec2:DescribeImages
+                  - ec2:DescribeInstances
+                  - ec2:DescribeInstanceStatus
+                  - ec2:DescribeRegions
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSnapshots
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeTags
+                  - ec2:DescribeVolumes
+                  - ec2:DetachVolume
+                  - ec2:GetPasswordData
+                  - ec2:ModifyImageAttribute
+                  - ec2:ModifyInstanceAttribute
+                  - ec2:ModifySnapshotAttribute
+                  - ec2:RegisterImage
+                  - ec2:RunInstances
+                  - ec2:StopInstances
+                  - ec2:TerminateInstances
+
+  SourceCodeUpdateTrail:
+    DependsOn: CloudTrailS3BucketPolicy
+    Type: "AWS::CloudTrail::Trail"
+    Properties:
+      EventSelectors:
+        - DataResources:
+            - Type: AWS::S3::Object
+              Values:
+                - !Sub arn:aws:s3:::${SourceS3Bucket}/
+          ReadWriteType: All # TODO: change to WriteOnly
+          IncludeManagementEvents: false # TODO: change to false
+      IsLogging: true
+      S3BucketName: !Ref CloudTrailS3BucketName
+      TrailName: !Sub AmiSourceUpdate-${AmiName}
+
+  SourceCodeUpdateEvent:
+    Type: "AWS::Events::Rule"
+    Properties:
+      Description: AMI source updated
+      EventPattern:
+        source: [aws.s3]
+        detail-type: [AWS API Call via CloudTrail]
+        detail:
+          eventSource: [s3.amazonaws.com]
+          eventName:
+            - CopyObject
+            - PutObject
+            - CompleteMultiPartUpload
+          requestParameters:
+            bucketName: [!Ref SourceS3Bucket]
+            key: [!Ref SourceS3Key]
+      Targets:
+        - Id: BuildPipeline
+          Arn: !Sub "arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${AmiBuildPipeline}"
+          RoleArn: !GetAtt SourceCodeUpdateEventRole.Arn
+
+  SourceCodeUpdateEventRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: events.amazonaws.com
+      Policies:
+        - PolicyName: AllowCodePipelineExecution
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: codepipeline:StartPipelineExecution
+                Resource: !Sub "arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${AmiBuildPipeline}"
+
+Outputs:
+  AmiBuildPipeline:
+    Description: AMI Build Pipeline Name
+    Value: !Ref AmiBuildPipeline

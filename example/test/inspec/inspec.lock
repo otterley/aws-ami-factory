@@ -1,0 +1,18 @@
+---
+lockfile_version: 1
+depends:
+- name: linux-baseline
+  resolved_source:
+    url: https://github.com/dev-sec/linux-baseline/archive/master.tar.gz
+    sha256: e406d3f35bba3123d15a072a7550eb23a1dd0982b69eeb62ed44436ecf68c969
+  version_constraints: []
+- name: ssh-baseline
+  resolved_source:
+    url: https://github.com/dev-sec/ssh-baseline/archive/master.tar.gz
+    sha256: d3a6cdc2687801b27f3e3913fbe76f483f3e9d666b59c52d32c64256251e7177
+  version_constraints: []
+- name: apache-baseline
+  resolved_source:
+    url: https://github.com/dev-sec/apache-baseline/archive/master.tar.gz
+    sha256: f6e1a30156b3efda2b62dd9ddcc1e557bfa13beee7de167ae980b43a23036a7e
+  version_constraints: []

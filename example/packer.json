@@ -1,0 +1,53 @@
+{
+    "variables": {
+        "subnet_id": "{{env `SUBNET_ID`}}",
+        "region": "{{env `AWS_REGION`}}"
+    },
+    "builders": [{
+        "type": "amazon-ebs",
+        "ami_name": "ami-pipeline-test-{{timestamp}}",
+        "ssh_username": "ec2-user",
+        "region": "{{user `region`}}",
+        "instance_type": "t2.micro",
+        "subnet_id": "{{user `subnet_id`}}",
+        "source_ami_filter": {
+            "filters": {
+                "name": "amzn2-ami-hvm-2.0.????????-x86_64-gp2",
+                "state": "available"
+            },
+            "owners": ["amazon"],
+            "most_recent": true
+        }
+    }],
+    "provisioners": [
+        {
+            "type": "shell",
+            "inline": [
+                "sudo yum -y update",
+                "sudo yum -y install httpd",
+                "sudo systemctl enable httpd",
+                "sudo yum -y remove amazon-ssm-agent",
+                "sudo yum install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm",
+                "sudo systemctl enable amazon-ssm-agent"
+            ]
+        },
+        {
+            "type": "shell",
+            "inline": [
+                "sudo yum -y install git",
+                "mkdir /tmp/cookbooks",
+                "git clone https://github.com/dev-sec/chef-os-hardening /tmp/cookbooks/os-hardening"
+            ]
+        },
+        {
+            "type": "chef-solo",
+            "remote_cookbook_paths": ["/tmp/cookbooks"],
+            "run_list": ["os-hardening"]
+        }
+    ],
+    "post-processors": [{
+        "type": "manifest",
+        "output": "manifest.json",
+        "strip_path": true
+    }]
+}

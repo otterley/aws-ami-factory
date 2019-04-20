@@ -1,0 +1,7 @@
+node_modules/
+vendor/
+*.tmp
+*.sw[a-z]
+*~
+*.zip
+manifest.json
