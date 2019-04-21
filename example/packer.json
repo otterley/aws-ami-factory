@@ -32,17 +32,35 @@
             ]
         },
         {
-            "type": "shell",
-            "inline": [
-                "sudo yum -y install git",
-                "mkdir /tmp/cookbooks",
-                "git clone https://github.com/dev-sec/chef-os-hardening /tmp/cookbooks/os-hardening"
-            ]
+            "type": "file",
+            "source": "baseline.sysctl.conf",
+            "destination": "/tmp/baseline.sysctl.conf"
         },
         {
-            "type": "chef-solo",
-            "remote_cookbook_paths": ["/tmp/cookbooks"],
-            "run_list": ["os-hardening"]
+            "type": "file",
+            "source": "baseline.auditd.conf",
+            "destination": "/tmp/baseline.auditd.conf"
+        },
+        {
+            "type": "file",
+            "source": "baseline.ssh_config",
+            "destination": "/tmp/baseline.ssh_config"
+        },
+        {
+            "type": "file",
+            "source": "baseline.sshd_config",
+            "destination": "/tmp/baseline.sshd_config"
+        },
+        {
+            "type": "shell",
+            "inline": [
+                "sudo install -o root -g root -m 644 /tmp/baseline.sysctl.conf /etc/sysctl.d/secure-baseline.conf",
+                "sudo install -o root -g root -m 640 /tmp/baseline.auditd.conf /etc/audit/auditd.conf",
+                "sudo install -o root -g root -m 644 /tmp/baseline.ssh_config /etc/ssh/ssh_config",
+                "sudo install -o root -g root -m 600 /tmp/baseline.sshd_config /etc/ssh/sshd_config",
+                "# Remove ssh DH moduli < 2047 bits",
+                "sudo awk '$5 >= 2047 { print }' /etc/ssh/moduli > /tmp/moduli.new && sudo mv /tmp/moduli.new /etc/ssh/moduli"
+            ]
         }
     ],
     "post-processors": [{
