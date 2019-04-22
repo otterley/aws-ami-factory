@@ -15,9 +15,8 @@
 # semanage port -a -t ssh_port_t -p tcp #PORTNUMBER
 #
 Port 22
-AddressFamily any
+AddressFamily inet
 ListenAddress 0.0.0.0
-ListenAddress ::
 Protocol 2
 
 HostKey /etc/ssh/ssh_host_rsa_key
@@ -57,7 +56,7 @@ AuthorizedKeysFile .ssh/authorized_keys
 HostbasedAuthentication no
 # Change to yes if you don't trust ~/.ssh/known_hosts for
 # HostbasedAuthentication
-#IgnoreUserKnownHosts no
+IgnoreUserKnownHosts yes
 # Don't read the user's ~/.rhosts and ~/.shosts files
 IgnoreRhosts yes
 
@@ -72,7 +71,7 @@ ChallengeResponseAuthentication no
 
 # Kerberos options
 KerberosAuthentication no
-#KerberosOrLocalPasswd yes
+KerberosOrLocalPasswd no
 KerberosTicketCleanup yes
 #KerberosGetAFSToken no
 #KerberosUseKuserok yes

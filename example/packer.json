@@ -58,8 +58,12 @@
                 "sudo install -o root -g root -m 640 /tmp/baseline.auditd.conf /etc/audit/auditd.conf",
                 "sudo install -o root -g root -m 644 /tmp/baseline.ssh_config /etc/ssh/ssh_config",
                 "sudo install -o root -g root -m 600 /tmp/baseline.sshd_config /etc/ssh/sshd_config",
+                "sudo install -o root -g root -m 400 /tmp/baseline.login.defs /etc/login.defs",
+                "sudo install -o root -g root -m 600 /tmp/baseline.modprobe.d.dev-sec.conf /etc/modprobe.d/dev-sec.conf",
                 "# Remove ssh DH moduli < 2047 bits",
-                "sudo awk '$5 >= 2047 { print }' /etc/ssh/moduli > /tmp/moduli.new && sudo mv /tmp/moduli.new /etc/ssh/moduli"
+                "sudo awk '$5 >= 2047 { print }' /etc/ssh/moduli > /tmp/moduli.new && sudo mv /tmp/moduli.new /etc/ssh/moduli",
+                "# Disable suid on ssh-keysign executable",
+                "sudo chmod 111 /usr/libexec/openssh/ssh-keysign"
             ]
         }
     ],
