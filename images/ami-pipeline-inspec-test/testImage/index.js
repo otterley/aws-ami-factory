@@ -171,6 +171,8 @@ async function runTest(instance, keyPath) {
     }).promise();
     const publicIpAddr = instanceInfo.Reservations[0].Instances[0].PublicIpAddress;
 
+    console.log(`Waiting for SSH port on ${publicIpAddr} to become available...`);
+
     await waitPort({
         host: publicIpAddr,
         port: 22,
@@ -178,6 +180,7 @@ async function runTest(instance, keyPath) {
     });
 
     return new Promise((resolve, reject) => {
+        console.log('Starting InSpec...');
         const process = spawn('inspec', ['exec',
             '-b', 'ssh',
             '-i', keyPath,
@@ -187,7 +190,7 @@ async function runTest(instance, keyPath) {
             '--no-color',
             TestDir
         ], {
-            // Don't capture stdout/stderr
+            // Don't squelch stdout/stderr
             stdio: 'inherit'
         });
         process.on('error', err => reject(err));

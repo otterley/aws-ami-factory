@@ -1,6 +1,7 @@
 ZIPFILE := example-ami.zip
 SOURCES := \
 	packer.json \
+	baseline.* \
 	buildspec.yml \
 	test/inspec/inspec.lock
 
