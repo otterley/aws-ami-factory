@@ -193,8 +193,14 @@ async function runTest(instance, keyPath) {
             // Don't squelch stdout/stderr
             stdio: 'inherit'
         });
-        process.on('error', err => reject(err));
-        process.on('close', exitCode => resolve(exitCode));
+        process.on('error', err => {
+            console.log(`Caught error: ${err}`);
+            reject(err);
+        });
+        process.on('close', exitCode => {
+            console.log(`Exit code: ${exitCode}`);
+            resolve(exitCode);
+        });
     });
 }
 
