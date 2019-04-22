@@ -188,6 +188,8 @@ async function runTest(instance, keyPath) {
             '--user', LoginName,
             '--sudo',
             '--no-color',
+            // Don't exit nonzero if tests are skipped
+            '--no-distinct-exit',
             TestDir
         ], {
             // Don't squelch stdout/stderr
