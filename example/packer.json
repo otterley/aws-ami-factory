@@ -43,6 +43,16 @@
         },
         {
             "type": "file",
+            "source": "baseline.login.defs",
+            "destination": "/tmp/baseline.login.defs"
+        },
+        {
+            "type": "file",
+            "source": "baseline.modprobe.d.dev-sec.conf",
+            "destination": "/tmp/baseline.modprobe.d.dev-sec.conf"
+        },
+        {
+            "type": "file",
             "source": "baseline.ssh_config",
             "destination": "/tmp/baseline.ssh_config"
         },
