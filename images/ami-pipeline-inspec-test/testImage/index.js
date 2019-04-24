@@ -212,7 +212,7 @@ async function tagImage(amiId, tags) {
     for (let tagName in tags) {
         if (Reflect.has(tags, tagName)) {
             tagArray.push({
-                Name: tagName,
+                Key: tagName,
                 Value: tags[tagName]
             });
         }
