@@ -3,7 +3,7 @@ version: 0.2
 phases:
   build:
     commands:
-      - packer build -color=false packer.json
+      - packer build -color=false -var git_ref=$(git describe --tags --always) packer.json
 
 artifacts:
   files:

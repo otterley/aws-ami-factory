@@ -4,3 +4,8 @@ phases:
   build:
     commands:
       - testImage
+
+artifacts:
+  files:
+    - manifest.json
+    - CODEBUILD_SOURCE_VERSION

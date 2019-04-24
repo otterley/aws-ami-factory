@@ -1,7 +1,8 @@
 {
     "variables": {
         "subnet_id": "{{env `SUBNET_ID`}}",
-        "region": "{{env `AWS_REGION`}}"
+        "region": "{{env `AWS_REGION`}}",
+        "git_ref": null
     },
     "builders": [{
         "type": "amazon-ebs",
@@ -17,6 +18,10 @@
             },
             "owners": ["amazon"],
             "most_recent": true
+        },
+        "tags": {
+            "GitRef": "{{user `git_ref`}}",
+            "TestStatus": "UNKNOWN"
         }
     }],
     "provisioners": [
@@ -33,33 +38,8 @@
         },
         {
             "type": "file",
-            "source": "baseline.sysctl.conf",
-            "destination": "/tmp/baseline.sysctl.conf"
-        },
-        {
-            "type": "file",
-            "source": "baseline.auditd.conf",
-            "destination": "/tmp/baseline.auditd.conf"
-        },
-        {
-            "type": "file",
-            "source": "baseline.login.defs",
-            "destination": "/tmp/baseline.login.defs"
-        },
-        {
-            "type": "file",
-            "source": "baseline.modprobe.d.dev-sec.conf",
-            "destination": "/tmp/baseline.modprobe.d.dev-sec.conf"
-        },
-        {
-            "type": "file",
-            "source": "baseline.ssh_config",
-            "destination": "/tmp/baseline.ssh_config"
-        },
-        {
-            "type": "file",
-            "source": "baseline.sshd_config",
-            "destination": "/tmp/baseline.sshd_config"
+            "source": "files/",
+            "destination": "/tmp/"
         },
         {
             "type": "shell",
