@@ -22,7 +22,7 @@ Parameters:
     Description: Name of CloudFormation stack containing an optional post-process function
     Type: String
     Default: ""
-  PostProcessStackOutput:
+  PostProcessStackFunctionArnOutputName:
     Description: Name of CloudFormation Output in post-process stack containing function ARN
     Type: String
     Default: ""
@@ -39,10 +39,13 @@ Parameters:
     Default: "365"
 
 Conditions:
+  # True if a post-processor stage should be added to the end of the pipeline.
   PostProcessor:
-    !And [!Not [!Equals [!Ref PostProcessStackName, ""]], !Not [!Equals [!Ref PostProcessStackOutput, ""]]]
+    !And [!Not [!Equals [!Ref PostProcessStackName, ""]], !Not [!Equals [!Ref PostProcessStackFunctionArnOutputName, ""]]]
 
 Resources:
+  # An S3 bucket into which the source code ZIP file should be placed when the AMI is
+  # ready to be built and tested.
   SourceS3Bucket:
     Type: "AWS::S3::Bucket"
     Properties:
@@ -60,6 +63,7 @@ Resources:
       VersioningConfiguration:
         Status: Enabled
 
+  # An S3 bucket used by CodePipeline to pass artifacts between stages and actions.
   ArtifactS3Bucket:
     Type: "AWS::S3::Bucket"
     Properties:
@@ -79,6 +83,7 @@ Resources:
           - Status: Enabled
             ExpirationInDays: !Ref LogRetentionInDays
 
+  # An dedicated S3 bucket into which CloudTrail can place its logs.
   CloudTrailS3Bucket:
     Type: "AWS::S3::Bucket"
     Properties:
@@ -98,6 +103,7 @@ Resources:
           - Status: Enabled
             ExpirationInDays: !Ref LogRetentionInDays
 
+  # Allow CloudTrail to upload to its designated S3 bucket.
   CloudTrailS3BucketPolicy:
     Type: "AWS::S3::BucketPolicy"
     Properties:
@@ -119,6 +125,8 @@ Resources:
               StringEquals:
                 "s3:x-amz-acl": bucket-owner-full-control
 
+            
+  # The build pipeline
   AmiBuildPipeline:
     Type: "AWS::CodePipeline::Pipeline"
     Properties:
@@ -184,9 +192,11 @@ Resources:
                 Version: "1"
               Configuration:
                 FunctionName:
-                  "Fn::ImportValue": !Sub "${PostProcessStackName}-${PostProcessStackOutput}"
+                  "Fn::ImportValue": !Sub "${PostProcessStackName}-${PostProcessStackFunctionArnOutputName}"
           - !Ref "AWS::NoValue"
 
+
+  # IAM role used by Pipeline
   AmiBuildPipelineRole:
     Type: "AWS::IAM::Role"
     Properties:
@@ -198,6 +208,8 @@ Resources:
             Principal:
               Service: codepipeline.amazonaws.com
       Policies:
+        # Build pipeline must be able to start CodeBuild builds and to
+        # access Source and Artifact S3 buckets.
         - PolicyName: Pipeline
           PolicyDocument:
             Version: "2012-10-17"
@@ -218,6 +230,7 @@ Resources:
                   - !Sub "arn:aws:s3:::${ArtifactS3Bucket}/*"
 
 
+  # CodeBuild Project for constructing AMI
   AmiBuildProject:
     Type: "AWS::CodeBuild::Project"
     Properties:
@@ -244,6 +257,8 @@ Resources:
             Value: !Ref BuildSubnetId
       TimeoutInMinutes: !Ref BuildTimeout
 
+
+  # CodeBuild Project for testing AMI
   AmiTestProject:
     Type: "AWS::CodeBuild::Project"
     Properties:
@@ -340,6 +355,8 @@ Resources:
                   - ec2:StopInstances
                   - ec2:TerminateInstances
 
+  # CloudTrail trail used to track S3 uploads so that we can trigger
+  # CodePipeline executions when the source code object is updated in the bucket.
   SourceCodeUpdateTrail:
     DependsOn: CloudTrailS3BucketPolicy
     Type: "AWS::CloudTrail::Trail"
@@ -349,12 +366,14 @@ Resources:
             - Type: AWS::S3::Object
               Values:
                 - !Sub arn:aws:s3:::${SourceS3Bucket}/
-          ReadWriteType: All # TODO: change to WriteOnly
-          IncludeManagementEvents: false # TODO: change to false
+          ReadWriteType: WriteOnly
+          IncludeManagementEvents: false
       IsLogging: true
       S3BucketName: !Ref CloudTrailS3BucketName
       TrailName: !Sub AmiSourceUpdate-${AmiName}
 
+  # CloudWatch Event that matches source-code S3 updates tracked by
+  # CloudTrail.  Starts a CodePipeline execution when the event is triggered.
   SourceCodeUpdateEvent:
     Type: "AWS::Events::Rule"
     Properties:
