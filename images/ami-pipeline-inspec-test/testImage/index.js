@@ -211,7 +211,10 @@ async function tagImage(amiId, tags) {
 
     for (let tagName in tags) {
         if (Reflect.has(tags, tagName)) {
-            tagArray.push({ tagName: tags[tagName] });
+            tagArray.push({
+                Name: tagName,
+                Value: tags[tagName]
+            });
         }
     }
 
@@ -251,7 +254,8 @@ async function main() {
             } else {
                 statusTagValue = TestStatusTagValueFailed;
             }
-            await tagImage(amiId, { [TestStatusTagName]: statusTagValue });
+            await tagImage(amiId, {
+                [TestStatusTagName]: statusTagValue });
         });
     } catch (err) {
         console.log(err.message);
