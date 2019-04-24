@@ -9,3 +9,5 @@ artifacts:
   files:
     - manifest.json
     - CODEBUILD_SOURCE_VERSION
+    - CODEBUILD_RESOLVED_SOURCE_VERSION
+    - CODEBUILD_BUILD_ID

@@ -2,7 +2,9 @@
     "variables": {
         "subnet_id": "{{env `SUBNET_ID`}}",
         "region": "{{env `AWS_REGION`}}",
-        "version_id": null
+        "version_id": null,
+        "resolved_version_id": null,
+        "build_id": null
     },
     "builders": [{
         "type": "amazon-ebs",
@@ -21,6 +23,8 @@
         },
         "tags": {
             "VersionId": "{{user `version_id`}}",
+            "ResolvedVersionId": "{{user `resolved_version_id}}",
+            "BuildId": "{{user `build_id`}}",
             "TestStatus": "UNKNOWN"
         }
     }],

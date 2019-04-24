@@ -20,6 +20,8 @@ const SubnetId = process.env['SUBNET_ID'];
 const InstanceType = process.env['EC2_INSTANCE_TYPE'] || 't2.small';
 const ManifestFile = require('path').join(SourceDir, 'manifest.json');
 const CodeBuildSourceVersionFile = require('path').join(SourceDir, 'CODEBUILD_SOURCE_VERSION');
+const CodeBuildResolvedSourceVersionFile = require('path').join(SourceDir, 'CODEBUILD_RESOLVED_SOURCE_VERSION');
+const CodeBuildIdFile = require('path').join(SourceDir, 'CODEBUILD_BUILD_ID');
 
 const LoginName = process.env['LOGIN_NAME'] || 'ec2-user';
 
@@ -275,6 +277,12 @@ async function main() {
             });
             if (process.env.CODEBUILD_SOURCE_VERSION) {
                 await writeFile(CodeBuildSourceVersionFile, process.env.CODEBUILD_SOURCE_VERSION);
+            }
+            if (process.env.CODEBUILD_BUILD_ID) {
+                await writeFile(CodeBuildIdFile, process.env.CODEBUILD_BUILD_ID);
+            }
+            if (process.env.CODEBUILD_RESOLVED_SOURCE_VERSION) {
+                await writeFile(CodeBuildResolvedSourceVersionFile, process.env.CODEBUILD_RESOLVED_SOURCE_VERSION);
             }
         });
     } catch (err) {
