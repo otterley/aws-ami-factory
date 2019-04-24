@@ -19,15 +19,18 @@ const AwsRegion = process.env['AWS_REGION'] || process.env['AWS_DEFAULT_REGION']
 const SubnetId = process.env['SUBNET_ID'];
 const InstanceType = process.env['EC2_INSTANCE_TYPE'] || 't2.small';
 const ManifestFile = require('path').join(SourceDir, 'manifest.json');
+const CodeBuildSourceVersionFile = require('path').join(SourceDir, 'CODEBUILD_SOURCE_VERSION');
+
 const LoginName = process.env['LOGIN_NAME'] || 'ec2-user';
 
 const TestStatusTagName = 'TestStatus';
 const TestStatusTagValuePassed = 'PASSED';
 const TestStatusTagValueFailed = 'FAILED';
 
+const ExitOK = 0;
+
 // eslint-disable-next-line no-magic-numbers
 const SSHWaitTimeout = 5 * minutes;
-const ExitOK = 0;
 
 
 async function getAmiIDsByRegion(path) {
@@ -205,6 +208,9 @@ async function runTest(instance, keyPath) {
     });
 }
 
+/*
+ * Tag a machine image (AMI) with the specified tags.
+ */
 async function tagImage(amiId, tags) {
     const ec2 = new aws.EC2();
     let tagArray = [];
@@ -223,6 +229,16 @@ async function tagImage(amiId, tags) {
         Tags: tagArray
     };
     await ec2.createTags(params).promise();
+}
+
+async function writeFile(path, content) {
+    let fd;
+    try {
+        fd = await promisify(fs.open)(path, 'w');
+        await promisify(fs.write)(fd, content);
+    } finally {
+        await promisify(fs.close)(fd);
+    }
 }
 
 async function main() {
@@ -255,7 +271,11 @@ async function main() {
                 statusTagValue = TestStatusTagValueFailed;
             }
             await tagImage(amiId, {
-                [TestStatusTagName]: statusTagValue });
+                [TestStatusTagName]: statusTagValue
+            });
+            if (process.env.CODEBUILD_SOURCE_VERSION) {
+                await writeFile(CodeBuildSourceVersionFile, process.env.CODEBUILD_SOURCE_VERSION);
+            }
         });
     } catch (err) {
         console.log(err.message);
