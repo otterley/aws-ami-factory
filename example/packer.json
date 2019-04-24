@@ -2,7 +2,7 @@
     "variables": {
         "subnet_id": "{{env `SUBNET_ID`}}",
         "region": "{{env `AWS_REGION`}}",
-        "git_ref": null
+        "version_id": null
     },
     "builders": [{
         "type": "amazon-ebs",
@@ -20,7 +20,7 @@
             "most_recent": true
         },
         "tags": {
-            "GitRef": "{{user `git_ref`}}",
+            "VersionId": "{{user `version_id`}}",
             "TestStatus": "UNKNOWN"
         }
     }],

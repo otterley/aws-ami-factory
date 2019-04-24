@@ -21,8 +21,13 @@ const InstanceType = process.env['EC2_INSTANCE_TYPE'] || 't2.small';
 const ManifestFile = require('path').join(SourceDir, 'manifest.json');
 const LoginName = process.env['LOGIN_NAME'] || 'ec2-user';
 
+const TestStatusTagName = 'TestStatus';
+const TestStatusTagValuePassed = 'PASSED';
+const TestStatusTagValueFailed = 'FAILED';
+
 // eslint-disable-next-line no-magic-numbers
 const SSHWaitTimeout = 5 * minutes;
+const ExitOK = 0;
 
 
 async function getAmiIDsByRegion(path) {
@@ -195,23 +200,36 @@ async function runTest(instance, keyPath) {
             // Don't squelch stdout/stderr
             stdio: 'inherit'
         });
-        process.on('error', err => {
-            console.log(`Caught error: ${err}`);
-            reject(err);
-        });
-        process.on('close', exitCode => {
-            console.log(`Exit code: ${exitCode}`);
-            resolve(exitCode);
-        });
+        process.on('error', err => reject(err));
+        process.on('close', exitCode => resolve(exitCode));
     });
+}
+
+async function tagImage(amiId, tags) {
+    const ec2 = new aws.EC2();
+    let tagArray = [];
+
+    for (let tagName in tags) {
+        if (Reflect.has(tags, tagName)) {
+            tagArray.push({ tagName: tags[tagName] });
+        }
+    }
+
+    const params = {
+        Resources: [amiId],
+        Tags: tagArray
+    };
+    await ec2.createTags(params).promise();
 }
 
 async function main() {
     try {
+        let amiId, statusTagValue;
         const amis = await getAmiIDsByRegion(ManifestFile);
         await withTestSecurityGroupAndKey(SubnetId, async (keyName, keyPath, securityGroupId) => {
+            amiId = amis[AwsRegion];
             const params = {
-                ImageId: amis[AwsRegion],
+                ImageId: amiId,
                 InstanceType: InstanceType,
                 KeyName: keyName,
                 NetworkInterfaces: [{
@@ -227,6 +245,13 @@ async function main() {
                 console.log(`Instance ID: ${instance.InstanceId}`);
                 process.exitCode = await runTest(instance, keyPath);
             });
+
+            if (process.exitCode === ExitOK) {
+                statusTagValue = TestStatusTagValuePassed;
+            } else {
+                statusTagValue = TestStatusTagValueFailed;
+            }
+            await tagImage(amiId, { [TestStatusTagName]: statusTagValue });
         });
     } catch (err) {
         console.log(err.message);

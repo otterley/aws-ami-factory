@@ -3,7 +3,9 @@ version: 0.2
 phases:
   build:
     commands:
-      - packer build -color=false -var git_ref=$(git describe --tags --always) packer.json
+      - version_id=$(git describe --tags --always)
+      - "[ -n \"$version_id\" ] || version_id=${CODEBUILD_SOURCE_VERSION}"
+      - packer build -color=false -var version_id=${version_id} packer.json
 
 artifacts:
   files:
