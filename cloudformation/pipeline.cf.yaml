@@ -15,7 +15,7 @@ Parameters:
   CloudTrailS3BucketName:
     Description: Name of S3 bucket used by CloudTrail to record source code uploads
     Type: String
-  ArtifactS3BucketName:
+  PipelineS3BucketName:
     Description: Name of S3 bucket used to store pipeline artifacts
     Type: String
   PostProcessStackName:
@@ -41,6 +41,9 @@ Parameters:
     Description: Packer version
     Type: String
     Default: "1.3.5"
+  TestHarnessImage:
+    Description: Docker image repository URI for test harness
+    Type: String
 
 Conditions:
   # True if a post-processor stage should be added to the end of the pipeline.
@@ -71,7 +74,7 @@ Resources:
   ArtifactS3Bucket:
     Type: "AWS::S3::Bucket"
     Properties:
-      BucketName: !Ref ArtifactS3BucketName
+      BucketName: !Ref PipelineS3BucketName
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -283,7 +286,7 @@ Resources:
       Environment:
         ComputeType: BUILD_GENERAL1_SMALL
         Type: LINUX_CONTAINER
-        Image: otterley/ami-pipeline-inspec-test:latest
+        Image: !Ref TestHarnessImage
         ImagePullCredentialsType: CODEBUILD
         EnvironmentVariables:
           - Name: SUBNET_ID

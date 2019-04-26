@@ -5,3 +5,4 @@ vendor/
 *~
 *.zip
 manifest.json
+site-config.mk
