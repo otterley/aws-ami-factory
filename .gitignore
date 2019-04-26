@@ -6,4 +6,4 @@ vendor/
 *.zip
 .vscode/
 manifest.json
-site-config.mk
+pipeline-config.mk

@@ -1,4 +1,4 @@
--include ../../site-config.mk
+-include ../../pipeline-config.mk
 include ../../include.mk
 
 ifndef TEST_HARNESS_IMAGE

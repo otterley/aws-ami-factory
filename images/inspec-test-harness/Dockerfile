@@ -1,3 +1,7 @@
+# encoding: utf-8
+# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 FROM chef/inspec:3.7.3
 
 COPY testImage /usr/local/lib/testImage/

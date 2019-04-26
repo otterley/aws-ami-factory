@@ -1,9 +1,18 @@
+# encoding: utf-8
+# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 version: 0.2
 
 phases:
   build:
     commands:
-      - packer build -color=false -var version_id=${CODEBUILD_SOURCE_VERSION} -var resolved_version_id=${CODEBUILD_RESOLVED_SOURCE_VERSION} -var build_id=${CODEBUILD_BUILD_ID} packer.json
+      - >
+        packer build -color=false
+          -var version_id=${CODEBUILD_SOURCE_VERSION}
+          -var resolved_version_id=${CODEBUILD_RESOLVED_SOURCE_VERSION}
+          -var build_id=${CODEBUILD_BUILD_ID}
+          packer.json
 
 artifacts:
   files:

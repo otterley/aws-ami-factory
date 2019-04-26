@@ -1,5 +1,6 @@
 # encoding: utf-8
-# copyright: 2018, The Authors
+# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
 
 title 'Web server'
 

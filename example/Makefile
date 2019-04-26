@@ -1,17 +1,26 @@
+# encoding: utf-8
+# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Edit these to suit your preferences.
+# IMPORTANT: SOURCE_S3_BUCKET and SOURCE_S3_KEY must match the parameters
+# configured in your AMI pipeline CloudFormation template.
 ZIPFILE := example-ami.zip
+SOURCE_S3_BUCKET := ami-source-f9b824e4
+SOURCE_S3_KEY := $(ZIPFILE)
+
 SOURCES := \
-    files/* \
 	packer.json \
 	buildspec.yml \
-	test/inspec/inspec.lock
-
-SOURCE_S3_BUCKET := ami-source-f9b824e4
-SOURCE_S3_KEY := test.zip
+	files \
+	test
 
 $(ZIPFILE): $(SOURCES)
-	zip $(ZIPFILE) $(SOURCES) $(shell find test -type f)
+	rm -f $(ZIPFILE) &&	zip -r $(ZIPFILE) $^
 
-test/inspec/inspec.lock: test/inspec/inspec.yml
+test: test/vendor
+
+test/vendor:
 	inspec vendor --overwrite test/inspec
 
 .PHONY: upload
