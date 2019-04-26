@@ -4,5 +4,6 @@ vendor/
 *.sw[a-z]
 *~
 *.zip
+.vscode/
 manifest.json
 site-config.mk
