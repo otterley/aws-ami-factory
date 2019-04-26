@@ -93,7 +93,7 @@ should contain the following text:
 TEST_HARNESS_IMAGE = <Name of the test harness image you created above>
 SUBNET_ID = <ID of subnet in which build-and-test instances will be run, e.g., subnet-abcd1234>
 
-# The following values must differ for each AMI repository:
+# The following values are specific to each AMI repository:
 SOURCE_S3_BUCKET = <Name of S3 bucket used to hold AMI source code>
 SOURCE_S3_KEY = <Name of S3 object key containing AMI source code ZIP file>
 CLOUDTRAIL_S3_BUCKET = <Name of S3 bucket used by CloudTrail to record source code uploads>

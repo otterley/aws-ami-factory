@@ -1,4 +1,1 @@
 VERSION := $(shell git describe --tags --always)
-
-TEST_HARNESS_IMAGE := $(if $(TEST_HARNESS_IMAGE), $(TEST_HARNESS_IMAGE), $(error INSPEC_TEST_IMAGE must be set))
-TEST_HARNESS_IMAGE_TAG := $(TEST_HARNESS_IMAGE):$(VERSION)
