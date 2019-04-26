@@ -30,7 +30,7 @@ This repository contains:
 ## Preparing the test harness Docker image
 
 Before starting anything, you'll want to build and upload the test-harness Docker
-image to a Docker image repository such as Amazon ECR](https://aws.amazon.com/ecr/) or
+image to a Docker image repository such as [Amazon ECR](https://aws.amazon.com/ecr/) or
 [Docker Hub](https://hub.docker.com).  You only need to do this once, and whenever
 an updated version of this kit is released that you wish to upgrade to.
 
@@ -167,10 +167,9 @@ be found [here](example/test/buildspec.yml).
 
 Once you've assembled your AMI source code and test suite, you'll need to zip up
 the source directory and upload it to S3.  A `Makefile` is included in the
-skeleton directory that can help.  In there, you'll need to customize the
-`SOURCE_S3_BUCKET` and `SOURCE_S3_KEY` variables to be the **same** values as
-those in the `pipeline-config.mk` file you used to construct your build-and-test
-pipeline.
+skeleton directory for your convenience.  In there, you'll need to customize the
+`SOURCE_S3_BUCKET` and `SOURCE_S3_KEY` variables to be the same values as those
+in the `pipeline-config.mk` file you used to construct your pipeline.
 
 Then, you can simply run:
 
@@ -178,10 +177,8 @@ Then, you can simply run:
 make upload
 ```
 
-The 
-
-
-
+If you've configured the pipeline correctly, you should be able to see the AMI
+begin being built in the CodePipeline console.
 
 
 Authors
