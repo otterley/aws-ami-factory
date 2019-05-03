@@ -1,0 +1,30 @@
+{
+  "name": "mt",
+  "version": "0.1.0",
+  "bin": {
+    "mt": "bin/mt.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/node": "8.10.45",
+    "typescript": "^3.3.3333",
+    "aws-cdk": "^0.30.0"
+  },
+  "dependencies": {
+    "@aws-cdk/aws-cloudtrail": "^0.30.0",
+    "@aws-cdk/aws-codebuild": "^0.30.0",
+    "@aws-cdk/aws-codepipeline": "^0.30.0",
+    "@aws-cdk/aws-codepipeline-actions": "^0.30.0",
+    "@aws-cdk/aws-ecr": "^0.30.0",
+    "@aws-cdk/aws-events": "^0.30.0",
+    "@aws-cdk/aws-iam": "^0.30.0",
+    "@aws-cdk/aws-kms": "^0.30.0",
+    "@aws-cdk/aws-s3": "^0.30.0",
+    "@aws-cdk/cdk": "^0.30.0",
+    "source-map-support": "^0.5.9"
+  }
+}

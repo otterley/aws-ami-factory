@@ -7,3 +7,8 @@ vendor/
 .vscode/
 manifest.json
 pipeline-config.mk
+*.js
+*.d.ts
+
+# CDK asset staging directory
+.cdk.staging
