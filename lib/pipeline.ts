@@ -7,7 +7,6 @@ import ecr = require('@aws-cdk/aws-ecr');
 import kms = require('@aws-cdk/aws-kms');
 import iam = require('@aws-cdk/aws-iam');
 import actions = require('@aws-cdk/aws-codepipeline-actions');
-//import events = require('@aws-cdk/aws-events');
 
 const DefaultPackerVersion = '1.3.5';
 
@@ -16,12 +15,10 @@ export interface AccountSharingMap {
 }
 
 export interface AmiStackProps extends cdk.StackProps {
-  name: string,
   subnetId: string,
-  testHarnessRepoName: string,
   sourceBucketName: string,
   sourceKey: string,
-  artifactBucketName: string,
+  testHarnessRepoName: string,
   shareWith?: AccountSharingMap,
   logRetentionDays?: number,
   artifactRetentionDays?: number,
@@ -29,48 +26,70 @@ export interface AmiStackProps extends cdk.StackProps {
   packerVersion?: string
 }
 
+const ec2InteractionPolicyStatement = new iam.PolicyStatement().
+  addAllResources().
+  addActions(
+    'ec2:AttachVolume',
+    'ec2:AuthorizeSecurityGroupIngress',
+    'ec2:CopyImage',
+    'ec2:CreateImage',
+    'ec2:CreateKeypair',
+    'ec2:CreateSecurityGroup',
+    'ec2:CreateSnapshot',
+    'ec2:CreateTags',
+    'ec2:CreateVolume',
+    'ec2:DeleteKeyPair',
+    'ec2:DeleteSecurityGroup',
+    'ec2:DeleteSnapshot',
+    'ec2:DeleteVolume',
+    'ec2:DeregisterImage',
+    'ec2:DescribeImageAttribute',
+    'ec2:DescribeImages',
+    'ec2:DescribeInstances',
+    'ec2:DescribeInstanceStatus',
+    'ec2:DescribeRegions',
+    'ec2:DescribeSecurityGroups',
+    'ec2:DescribeSnapshots',
+    'ec2:DescribeSubnets',
+    'ec2:DescribeTags',
+    'ec2:DescribeVolumes',
+    'ec2:DetachVolume',
+    'ec2:GetPasswordData',
+    'ec2:ModifyImageAttribute',
+    'ec2:ModifyInstanceAttribute',
+    'ec2:ModifySnapshotAttribute',
+    'ec2:RegisterImage',
+    'ec2:RunInstances',
+    'ec2:StopInstances',
+    'ec2:TerminateInstances'
+  );
+
 export class AmiBuildPipeline extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props: AmiStackProps) {
-    super(scope, id, props);
+    super(scope, id + 'BuildPipeline', props);
 
-    // An S3 bucket into which the source code ZIP file should be placed when the AMI is
-    // ready to be built and tested.
-    const sourceBucket = new s3.Bucket(this, 'AmiSourceBucket', {
-      bucketName: props.sourceBucketName,
-      encryption: s3.BucketEncryption.S3Managed,
-      blockPublicAccess: s3.BlockPublicAccess.BlockAll,
-      versioned: true,
-    });
+    // Remove all leading '/' characters from the source key
+    props.sourceKey = props.sourceKey.replace(/^\/+/, '');
 
-    // An S3 bucket used by CodePipeline to pass artifacts between stages and actions.
-    const artifactBucket = new s3.Bucket(this, 'ArtifactBucket', {
-      bucketName: props.artifactBucketName,
-      encryption: s3.BucketEncryption.S3Managed,
-      blockPublicAccess: s3.BlockPublicAccess.BlockAll,
-      lifecycleRules: [
-        {
-          enabled: true,
-          expirationInDays: props.artifactRetentionDays
-        }
-      ]
+    const sourceBucket = s3.Bucket.import(this, 'AmiSourceBucket', {
+      bucketName: props.sourceBucketName
     });
 
     // CloudTrail trail used to track S3 uploads so that we can trigger
     // CodePipeline executions when the source code object is updated in the bucket.
     const uploadTrail = new cloudtrail.CloudTrail(this, 'UploadTrail');
     uploadTrail.addS3EventSelector(
-      [artifactBucket.bucketArn],
+      [sourceBucket.bucketArn + '/' + props.sourceKey],
       {
         includeManagementEvents: false,
         readWriteType: cloudtrail.ReadWriteType.WriteOnly
       }
-    )
+    );
 
     // ECR repository in which to place AMI test harness image
-    const testHarnessImageRepo = new ecr.Repository(this, 'TestHarnessImageRepo', {
+    const testHarnessImageRepo = ecr.Repository.import(this, 'TestHarnessImageRepo', {
       repositoryName: props.testHarnessRepoName,
     });
-    // TODO: Make this an output
 
     // AMI encryption key
     const amiEncryptionKey = new kms.EncryptionKey(this, 'AmiEncryptionKey', {
@@ -78,36 +97,58 @@ export class AmiBuildPipeline extends cdk.Stack {
     });
     for (const accountId in props.shareWith) {
       amiEncryptionKey.addToResourcePolicy(
-        new iam.PolicyStatement().addAwsAccountPrincipal(accountId).addActions(
-          'kms:Encrypt',
-          'kms:Decrypt',
-          'kms:ReEncrypt*',
-          'kms:GenerateDataKey*',
-          'kms:DescribeKey'
-        ).addAllResources()
+        new iam.PolicyStatement()
+          .addAwsAccountPrincipal(accountId)
+          .addActions(
+            'kms:Encrypt',
+            'kms:Decrypt',
+            'kms:ReEncrypt*',
+            'kms:GenerateDataKey*',
+            'kms:DescribeKey'
+          )
+          .addAllResources()
       );
       amiEncryptionKey.addToResourcePolicy(
-        new iam.PolicyStatement().addAwsAccountPrincipal(accountId).addActions(
-          'kms:CreateGrant',
-          'kms:ListGrants',
-          'kms:RevokeGrant'
-        ).addAllResources().addCondition('Bool', { 'kms:GrantIsForAWSResource': true })
+        new iam.PolicyStatement()
+          .addAwsAccountPrincipal(accountId)
+          .addActions(
+            'kms:CreateGrant',
+            'kms:ListGrants',
+            'kms:RevokeGrant'
+          )
+          .addAllResources()
+          .addCondition('Bool', { 'kms:GrantIsForAWSResource': true })
       );
     }
 
+    const amiEncryptionKeyAlias = new kms.EncryptionKeyAlias(this, 'AmiEncryptionKeyAlias', {
+      alias: `alias/ami/${id}`,
+      key: amiEncryptionKey
+    });
+
+    // AMI CodeBuild Project
     const amiBuildProject = new codebuild.PipelineProject(this, 'AmiBuildProject', {
+      projectName: `AmiBuilder-${id}`,
       environment: {
         buildImage: codebuild.LinuxBuildImage.fromDockerHub(`hashicorp/packer:${props.packerVersion || DefaultPackerVersion}`),
         computeType: codebuild.ComputeType.Small,
         environmentVariables: {
           'SUBNET_ID': { value: props.subnetId },
-          'KMS_KEY_ID': { value: amiEncryptionKey.keyArn }
+          'KMS_KEY_ID': {
+            value: this.formatArn({
+              service: 'kms',
+              resource: amiEncryptionKeyAlias.aliasName
+            })
+          }
         }
       },
       timeout: props.buildTimeoutMinutes,
     });
+    amiBuildProject.addToRolePolicy(ec2InteractionPolicyStatement);
 
+    // AMI test harness CodeBuild Project
     const amiTestProject = new codebuild.PipelineProject(this, 'AmiTestProject', {
+      projectName: `AmiTester-${id}`,
       buildSpec: 'test/buildspec.yml',
       environment: {
         buildImage: codebuild.LinuxBuildImage.fromEcrRepository(testHarnessImageRepo),
@@ -118,11 +159,41 @@ export class AmiBuildPipeline extends cdk.Stack {
       },
       timeout: props.buildTimeoutMinutes,
     });
+    amiTestProject.addToRolePolicy(ec2InteractionPolicyStatement);
+
+    // Ensure CodeBuild projects can manage encrypted snapshots
+    for (const project of [amiBuildProject, amiTestProject]) {
+      if (project.role) {
+        amiEncryptionKey.addToResourcePolicy(
+          new iam.PolicyStatement()
+            .addPrincipal(project.role)
+            .addActions(
+              'kms:Encrypt',
+              'kms:Decrypt',
+              'kms:ReEncrypt*',
+              'kms:GenerateDataKey*',
+              'kms:DescribeKey'
+            )
+            .addAllResources()
+        );
+        amiEncryptionKey.addToResourcePolicy(
+          new iam.PolicyStatement()
+            .addPrincipal(project.role)
+            .addActions(
+              'kms:CreateGrant',
+              'kms:ListGrants',
+              'kms:RevokeGrant'
+            )
+            .addAllResources()
+            .addCondition('Bool', { 'kms:GrantIsForAWSResource': true })
+        );
+      }
+    }
 
 
+    // Construct the build-and-test Pipeline
     const amiBuildPipeline = new codepipeline.Pipeline(this, 'AmiBuildPipeline', {
-      artifactBucket: artifactBucket,
-      pipelineName: props.name,
+      pipelineName: `AmiBuilder-${id}`,
       restartExecutionOnUpdate: false,
     });
 

@@ -1,14 +1,17 @@
 {
     "variables": {
-        "subnet_id": "{{env `SUBNET_ID`}}",
         "region": "{{env `AWS_REGION`}}",
+        "subnet_id": null,
         "version_id": null,
         "resolved_version_id": null,
-        "build_id": null
+        "build_id": null,
+        "kms_key_id": null
     },
     "builders": [{
         "type": "amazon-ebs",
         "ami_name": "ami-pipeline-test-{{timestamp}}",
+        "encrypt_boot": true,
+        "kms_key_id": "{{user `kms_key_id`}}",
         "ssh_username": "ec2-user",
         "region": "{{user `region`}}",
         "instance_type": "t2.micro",
