@@ -7,6 +7,10 @@ import ecr = require('@aws-cdk/aws-ecr');
 import kms = require('@aws-cdk/aws-kms');
 import iam = require('@aws-cdk/aws-iam');
 import actions = require('@aws-cdk/aws-codepipeline-actions');
+import lambda = require('@aws-cdk/aws-lambda');
+import sfn = require('@aws-cdk/aws-stepfunctions');
+import path = require('path');
+import { DestinationRoleName } from '../lib/common';
 
 const DefaultPackerVersion = '1.3.5';
 
@@ -93,29 +97,21 @@ export class AmiBuildPipeline extends cdk.Stack {
 
     // AMI encryption key
     const amiEncryptionKey = new kms.EncryptionKey(this, 'AmiEncryptionKey', {
-      description: 'AMI encryption key',
+      description: `AMI encryption key - ${id}`,
     });
     for (const accountId in props.shareWith) {
+      // Allow destination account to decrypt AMI
       amiEncryptionKey.addToResourcePolicy(
         new iam.PolicyStatement()
-          .addAwsAccountPrincipal(accountId)
-          .addActions(
-            'kms:Encrypt',
-            'kms:Decrypt',
-            'kms:ReEncrypt*',
-            'kms:GenerateDataKey*',
-            'kms:DescribeKey'
-          )
+          .addArnPrincipal(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
+          .addAction('kms:Decrypt')
           .addAllResources()
       );
+      // Destination account decrypts AMI via KMS grant to EC2, so allow that too
       amiEncryptionKey.addToResourcePolicy(
         new iam.PolicyStatement()
-          .addAwsAccountPrincipal(accountId)
-          .addActions(
-            'kms:CreateGrant',
-            'kms:ListGrants',
-            'kms:RevokeGrant'
-          )
+          .addArnPrincipal(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
+          .addAction('kms:CreateGrant')
           .addAllResources()
           .addCondition('Bool', { 'kms:GrantIsForAWSResource': true })
       );
@@ -126,7 +122,7 @@ export class AmiBuildPipeline extends cdk.Stack {
       key: amiEncryptionKey
     });
 
-    // AMI CodeBuild Project
+    // AMI builder CodeBuild Project
     const amiBuildProject = new codebuild.PipelineProject(this, 'AmiBuildProject', {
       projectName: `AmiBuilder-${id}`,
       environment: {
@@ -161,7 +157,8 @@ export class AmiBuildPipeline extends cdk.Stack {
     });
     amiTestProject.addToRolePolicy(ec2InteractionPolicyStatement);
 
-    // Ensure CodeBuild projects can manage encrypted snapshots
+    // Ensure AMI builder can use encryption key to encrypt snapshots
+    // and AMI test harness can decrypt them when starting test instances
     for (const project of [amiBuildProject, amiTestProject]) {
       if (project.role) {
         amiEncryptionKey.addToResourcePolicy(
@@ -190,14 +187,11 @@ export class AmiBuildPipeline extends cdk.Stack {
       }
     }
 
-
     // Construct the build-and-test Pipeline
-    const amiBuildPipeline = new codepipeline.Pipeline(this, 'AmiBuildPipeline', {
-      pipelineName: `AmiBuilder-${id}`,
-      restartExecutionOnUpdate: false,
-    });
+    const buildOutput = new codepipeline.Artifact('BuildOutput');
+    const sourceOutput = new codepipeline.Artifact('SourceOutput');
+    const testOutput = new codepipeline.Artifact('TestOutput');
 
-    const sourceOutput = new codepipeline.Artifact();
     const sourceAction = new actions.S3SourceAction({
       actionName: 'Source',
       bucket: sourceBucket,
@@ -205,33 +199,144 @@ export class AmiBuildPipeline extends cdk.Stack {
       pollForSourceChanges: false,
       output: sourceOutput
     });
-    amiBuildPipeline.addStage({
-      name: 'Source',
-      actions: [sourceAction]
-    });
 
-    const buildOutput = new codepipeline.Artifact();
     const buildAction = new actions.CodeBuildAction({
       actionName: 'Build',
       project: amiBuildProject,
       input: sourceOutput,
       output: buildOutput,
     });
-    amiBuildPipeline.addStage({
-      name: 'Build',
-      actions: [buildAction]
-    });
 
-    const testOutput = new codepipeline.Artifact();
     const testAction = new actions.CodeBuildAction({
       actionName: 'Test',
       project: amiTestProject,
       input: buildOutput,
       output: testOutput
     });
-    amiBuildPipeline.addStage({
-      name: 'Test',
-      actions: [testAction]
+
+    // AMI copier step function and tasks
+    const copyAmiAssetCode = new lambda.AssetCode(path.join(__dirname, 'copy-ami'));
+
+    // Success notifier
+    const successFunction = new lambda.Function(this, 'PutJobSuccessFunction', {
+      description: 'Notify CodePipeline of AMI sharing success',
+      functionName: `AmiSharingSuccess-${id}`,
+      handler: 'index.notifySuccess',
+      memorySize: 128,
+      logRetentionDays: props.logRetentionDays,
+      runtime: lambda.Runtime.NodeJS810,
+      code: copyAmiAssetCode,
+    });
+
+    // Unfortunately, we cannot restrict the success function to notifying only
+    // our pipeline without introducing a circular dependency.
+    successFunction.addToRolePolicy(
+      new iam.PolicyStatement()
+        .addAction('codepipeline:PutJobSuccessResult')
+        .addAllResources()
+    );
+
+    const successTask = new sfn.Task(this, 'PutJobSuccessTask', {
+      resource: successFunction
+    });
+
+    const copyFunction = new lambda.Function(this, `CopyImageFunction`, {
+      description: `Copy AMI ${id} to another account`,
+      functionName: `CopyAMI-${id}`,
+      handler: 'index.copyImage',
+      memorySize: 128,
+      logRetentionDays: props.logRetentionDays,
+      runtime: lambda.Runtime.NodeJS810,
+      code: copyAmiAssetCode,
+    });
+    copyFunction.addToRolePolicy(
+      new iam.PolicyStatement()
+        .addAction('sts:GetCallerIdentity')
+        .addAllResources()
+    );
+    for (const accountId in props.shareWith) {
+      copyFunction.addToRolePolicy(
+        new iam.PolicyStatement()
+          .addActions('sts:AssumeRole')
+          .addResource(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
+      );
+    }
+
+    let copyTasks: sfn.Task[] = [];
+    for (const accountId in props.shareWith) {
+      for (const region of props.shareWith[accountId]) {
+        const copyImageTask = new sfn.Task(this, `CopyImageTask${accountId}${region}`, {
+          resource: copyFunction,
+          parameters: {
+            'sourceSnapshotId.$': '$.sourceSnapshotId',
+            destinationAccountId: accountId,
+            destinationRegion: region,
+            destinationRoleName: DestinationRoleName,
+            kmsKeyAlias: `alias/ami/${id}`,
+            amiName: id,
+          }
+        });
+        copyTasks.push(copyImageTask);
+      }
+    }
+
+    const copyTasksParallel = new sfn.Parallel(this, 'CopyTasks');
+    copyTasksParallel.branch(...copyTasks);
+
+    const copyStateMachine = new sfn.StateMachine(this, 'AmiCopyStateMachine', {
+      definition: copyTasksParallel
+        .next(successTask)
+    });
+
+    const kickoffCopyFunction = new lambda.Function(this, 'KickoffAmiCopyFunction', {
+      description: `Executes Step Function to copy ${id} AMI to other accounts`,
+      functionName: `ExecuteAmiCopyStepFunction-${id}`,
+      handler: 'index.kickoff',
+      memorySize: 128,
+      logRetentionDays: props.logRetentionDays,
+      runtime: lambda.Runtime.NodeJS810,
+      code: copyAmiAssetCode,
+      environment: {
+        INPUT_ARTIFACT_NAME: testOutput.artifactName,
+        STATE_MACHINE_ARN: copyStateMachine.stateMachineArn,
+      },
+    });
+    kickoffCopyFunction.addToRolePolicy(
+      new iam.PolicyStatement()
+        .addAction('states:StartExecution')
+        .addResource(copyStateMachine.stateMachineArn)
+    );
+
+    // Invoke step-function launcher to start AMI copy
+    const copyAction = new actions.LambdaInvokeAction({
+      actionName: 'Copy',
+      inputs: [testOutput],
+      lambda: kickoffCopyFunction,
+      userParameters: JSON.stringify(props.shareWith),
+    });
+
+    // Build pipeline
+    new codepipeline.Pipeline(this, 'AmiBuildPipeline', {
+      pipelineName: `AmiBuilder-${id}`,
+      restartExecutionOnUpdate: false,
+      stages: [
+        {
+          name: 'Source',
+          actions: [sourceAction]
+        },
+        {
+          name: 'Build',
+          actions: [buildAction]
+        },
+        {
+          name: 'Test',
+          actions: [testAction]
+        },
+        {
+          name: 'Copy',
+          actions: [copyAction]
+        }
+      ]
     });
   };
 }
