@@ -24,10 +24,12 @@ class AmiSnapshotCopyRoleStack extends cdk.Stack {
             .addAllResources()
             .addActions(
                 'ec2:CopySnapshot',
+                'ec2:DescribeImages',
                 'ec2:DescribeSnapshots',
                 'ec2:CreateImage',
                 'ec2:DescribeImages',
                 'ec2:CreateTags',
+                'ec2:RegisterImage',
                 'kms:DescribeKey',
                 'kms:CreateKey',
                 'kms:CreateAlias'

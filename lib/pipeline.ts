@@ -157,8 +157,8 @@ export class AmiBuildPipeline extends cdk.Stack {
     });
     amiTestProject.addToRolePolicy(ec2InteractionPolicyStatement);
 
-    // Ensure AMI builder can use encryption key to encrypt snapshots
-    // and AMI test harness can decrypt them when starting test instances
+    // Ensure AMI builder can use encryptionß key to encrypt snapshots and AMI
+    // test harness can decrypt them when starting test instances
     for (const project of [amiBuildProject, amiTestProject]) {
       if (project.role) {
         amiEncryptionKey.addToResourcePolicy(
@@ -240,48 +240,123 @@ export class AmiBuildPipeline extends cdk.Stack {
       resource: successFunction
     });
 
-    const copyFunction = new lambda.Function(this, `CopyImageFunction`, {
-      description: `Copy AMI ${id} to another account`,
-      functionName: `CopyAMI-${id}`,
+    // Function to kick off snapshot copy
+    const copySnapshotFunction = new lambda.Function(this, 'CopySnapshotFunction', {
+      description: `Copy snapshot for AMI ${id} to another account`,
+      functionName: `CopyAmiSnapshot-${id}`,
       handler: 'index.copyImage',
       memorySize: 128,
       logRetentionDays: props.logRetentionDays,
       runtime: lambda.Runtime.NodeJS810,
       code: copyAmiAssetCode,
     });
-    copyFunction.addToRolePolicy(
+    copySnapshotFunction.addToRolePolicy(
       new iam.PolicyStatement()
         .addAction('sts:GetCallerIdentity')
         .addAllResources()
     );
     for (const accountId in props.shareWith) {
-      copyFunction.addToRolePolicy(
+      copySnapshotFunction.addToRolePolicy(
         new iam.PolicyStatement()
           .addActions('sts:AssumeRole')
           .addResource(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
       );
     }
 
-    let copyTasks: sfn.Task[] = [];
+    // Function to check snapshot progress
+    const checkSnapshotFunction = new lambda.Function(this, 'CheckSnapshotFunction', {
+      description: `Check progress of snapshot copy of AMI ${id}`,
+      functionName: `CheckSnapshotProgress-${id}`,
+      handler: 'index.checkSnapshotProgress',
+      memorySize: 128,
+      logRetentionDays: props.logRetentionDays,
+      runtime: lambda.Runtime.NodeJS810,
+      code: copyAmiAssetCode,
+    });
+    checkSnapshotFunction.addToRolePolicy(
+      new iam.PolicyStatement()
+        .addAction('sts:GetCallerIdentity')
+        .addAllResources()
+    );
+    for (const accountId in props.shareWith) {
+      checkSnapshotFunction.addToRolePolicy(
+        new iam.PolicyStatement()
+          .addActions('sts:AssumeRole')
+          .addResource(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
+      );
+    }
+
+
+    // Function to register AMI after snapshot copy
+    const registerImageFunction = new lambda.Function(this, 'RegisterImageFunction', {
+      description: `Register AMI ${id}`,
+      functionName: `RegisterImage-${id}`,
+      handler: 'index.registerImage',
+      memorySize: 128,
+      logRetentionDays: props.logRetentionDays,
+      runtime: lambda.Runtime.NodeJS810,
+      code: copyAmiAssetCode,
+    });
+    registerImageFunction.addToRolePolicy(
+      new iam.PolicyStatement()
+        .addAction('sts:GetCallerIdentity')
+        .addAllResources()
+    );
+    for (const accountId in props.shareWith) {
+      registerImageFunction.addToRolePolicy(
+        new iam.PolicyStatement()
+          .addActions('sts:AssumeRole')
+          .addResource(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
+      );
+    }
+
+
+    let branches: sfn.IChainable[] = [];
     for (const accountId in props.shareWith) {
       for (const region of props.shareWith[accountId]) {
-        const copyImageTask = new sfn.Task(this, `CopyImageTask${accountId}${region}`, {
-          resource: copyFunction,
+        const copySnapshotTask = new sfn.Task(this, `CopySnapshotTask${accountId}${region}`, {
+          resource: copySnapshotFunction,
           parameters: {
-            'sourceSnapshotId.$': '$.sourceSnapshotId',
+            'sourceImageId.$': '$.sourceImageId',
+            'jobId.$': '$.jobId',
             destinationAccountId: accountId,
             destinationRegion: region,
             destinationRoleName: DestinationRoleName,
             kmsKeyAlias: `alias/ami/${id}`,
-            amiName: id,
+            amiName: id
           }
         });
-        copyTasks.push(copyImageTask);
+
+        const checkSnapshotTask = new sfn.Task(this, `CheckSnapshotTask${accountId}${region}`, {
+          resource: checkSnapshotFunction,
+        });
+
+        const registerImageTask = new sfn.Task(this, `RegisterImageTask${accountId}${region}`, {
+          resource: registerImageFunction,
+        });
+
+        const waitStep = new sfn.Wait(this, `WaitAndRecheck${accountId}${region}`, {
+          duration: sfn.WaitDuration.seconds(30)
+        })
+
+        const progressChoice = new sfn.Choice(this, `EvalSnapshotProgress${accountId}${region}`);
+
+        const chain = copySnapshotTask
+          .next(checkSnapshotTask)
+          .next(progressChoice
+            .when(
+              sfn.Condition.stringEquals('$.snapshotState', 'completed'),
+              registerImageTask
+            )
+            .otherwise(waitStep.next(checkSnapshotTask))
+          );
+
+        branches.push(chain);
       }
     }
 
     const copyTasksParallel = new sfn.Parallel(this, 'CopyTasks');
-    copyTasksParallel.branch(...copyTasks);
+    copyTasksParallel.branch(...branches);
 
     const copyStateMachine = new sfn.StateMachine(this, 'AmiCopyStateMachine', {
       definition: copyTasksParallel
