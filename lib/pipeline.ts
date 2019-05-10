@@ -240,12 +240,13 @@ export class AmiBuildPipeline extends cdk.Stack {
       resource: successFunction
     });
 
-    // Function to kick off snapshot copy
+    // Function to start snapshot coffee
     const copySnapshotFunction = new lambda.Function(this, 'CopySnapshotFunction', {
       description: `Copy snapshot for AMI ${id} to another account`,
       functionName: `CopyAmiSnapshot-${id}`,
-      handler: 'index.copyImage',
+      handler: 'index.copySnapshot',
       memorySize: 128,
+      timeout: 30,
       logRetentionDays: props.logRetentionDays,
       runtime: lambda.Runtime.NodeJS810,
       code: copyAmiAssetCode,
@@ -253,6 +254,11 @@ export class AmiBuildPipeline extends cdk.Stack {
     copySnapshotFunction.addToRolePolicy(
       new iam.PolicyStatement()
         .addAction('sts:GetCallerIdentity')
+        .addAllResources()
+    );
+    copySnapshotFunction.addToRolePolicy(
+      new iam.PolicyStatement()
+        .addAction('ec2:DescribeImages')
         .addAllResources()
     );
     for (const accountId in props.shareWith) {
