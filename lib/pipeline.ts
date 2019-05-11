@@ -100,11 +100,14 @@ export class AmiBuildPipeline extends cdk.Stack {
       description: `AMI encryption key - ${id}`,
     });
     for (const accountId in props.shareWith) {
-      // Allow destination account to decrypt AMI
+      // Allow destination account to describe and decrypt key
       amiEncryptionKey.addToResourcePolicy(
         new iam.PolicyStatement()
           .addArnPrincipal(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
-          .addAction('kms:Decrypt')
+          .addActions(
+            'kms:Decrypt',
+            'kms:DescribeKey'
+          )
           .addAllResources()
       );
       // Destination account decrypts AMI via KMS grant to EC2, so allow that too
@@ -223,6 +226,7 @@ export class AmiBuildPipeline extends cdk.Stack {
       functionName: `AmiSharingSuccess-${id}`,
       handler: 'index.notifySuccess',
       memorySize: 128,
+      timeout: 300,
       logRetentionDays: props.logRetentionDays,
       runtime: lambda.Runtime.NodeJS810,
       code: copyAmiAssetCode,
@@ -240,7 +244,27 @@ export class AmiBuildPipeline extends cdk.Stack {
       resource: successFunction
     });
 
-    // Function to start snapshot coffee
+    // Failure notifier
+    const failureFunction = new lambda.Function(this, 'PutJobFailureFunction', {
+      description: 'Notify CodePipeline of AMI sharing failure',
+      functionName: `AmiSharingFailure-${id}`,
+      handler: 'index.notifyFailure',
+      memorySize: 128,
+      timeout: 300,
+      logRetentionDays: props.logRetentionDays,
+      runtime: lambda.Runtime.NodeJS810,
+      code: copyAmiAssetCode,
+    });
+
+    // Unfortunately, we cannot restrict the success function to notifying only
+    // our pipeline without introducing a circular dependency.
+    failureFunction.addToRolePolicy(
+      new iam.PolicyStatement()
+        .addAction('codepipeline:PutJobFailureResult')
+        .addAllResources()
+    );
+
+    // Function to start snapshot copy
     const copySnapshotFunction = new lambda.Function(this, 'CopySnapshotFunction', {
       description: `Copy snapshot for AMI ${id} to another account`,
       functionName: `CopyAmiSnapshot-${id}`,
@@ -275,6 +299,7 @@ export class AmiBuildPipeline extends cdk.Stack {
       functionName: `CheckSnapshotProgress-${id}`,
       handler: 'index.checkSnapshotProgress',
       memorySize: 128,
+      timeout: 30,
       logRetentionDays: props.logRetentionDays,
       runtime: lambda.Runtime.NodeJS810,
       code: copyAmiAssetCode,
@@ -299,6 +324,7 @@ export class AmiBuildPipeline extends cdk.Stack {
       functionName: `RegisterImage-${id}`,
       handler: 'index.registerImage',
       memorySize: 128,
+      timeout: 30,
       logRetentionDays: props.logRetentionDays,
       runtime: lambda.Runtime.NodeJS810,
       code: copyAmiAssetCode,
@@ -329,13 +355,20 @@ export class AmiBuildPipeline extends cdk.Stack {
             destinationRegion: region,
             destinationRoleName: DestinationRoleName,
             kmsKeyAlias: `alias/ami/${id}`,
-            amiName: id
+            amiName: id,
           }
         });
 
         const checkSnapshotTask = new sfn.Task(this, `CheckSnapshotTask${accountId}${region}`, {
           resource: checkSnapshotFunction,
         });
+
+        const failureTask = new sfn.Task(this, `PutJobFailureTask${accountId}${region}`, {
+          resource: failureFunction,
+        });
+        failureTask.next(new sfn.Fail(this, `FailCopy${accountId}${region}`, {
+          cause: 'Snapshot copy failed'
+        }));
 
         const registerImageTask = new sfn.Task(this, `RegisterImageTask${accountId}${region}`, {
           resource: registerImageFunction,
@@ -353,6 +386,10 @@ export class AmiBuildPipeline extends cdk.Stack {
             .when(
               sfn.Condition.stringEquals('$.snapshotState', 'completed'),
               registerImageTask
+            )
+            .when(
+              sfn.Condition.stringEquals('$.snapshotState', 'error'),
+              failureTask
             )
             .otherwise(waitStep.next(checkSnapshotTask))
           );
@@ -374,18 +411,25 @@ export class AmiBuildPipeline extends cdk.Stack {
       functionName: `ExecuteAmiCopyStepFunction-${id}`,
       handler: 'index.kickoff',
       memorySize: 128,
+      timeout: 30,
       logRetentionDays: props.logRetentionDays,
       runtime: lambda.Runtime.NodeJS810,
       code: copyAmiAssetCode,
       environment: {
         INPUT_ARTIFACT_NAME: testOutput.artifactName,
         STATE_MACHINE_ARN: copyStateMachine.stateMachineArn,
+        SHARE_WITH_ACCOUNTS: Object.keys(props.shareWith || {}).join(',')
       },
     });
     kickoffCopyFunction.addToRolePolicy(
       new iam.PolicyStatement()
         .addAction('states:StartExecution')
         .addResource(copyStateMachine.stateMachineArn)
+    );
+    kickoffCopyFunction.addToRolePolicy(
+      new iam.PolicyStatement()
+        .addActions('ec2:ModifySnapshotAttribute', 'ec2:DescribeImages')
+        .addAllResources()
     );
 
     // Invoke step-function launcher to start AMI copy
