@@ -1,1 +1,1 @@
-export const DestinationRoleName = 'AmiSnapshotCopyRole';
+export const DestinationRoleName = "AmiSnapshotCopyRole";
