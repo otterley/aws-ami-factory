@@ -15,22 +15,33 @@ import { DestinationRoleName } from "../lib/common";
 
 const DefaultPackerVersion = "1.3.5";
 
+// Map of spoke-account IDs to regions with which AMI should be shared
 export interface AccountSharingMap {
   [accountID: string]: string[];
 }
 
 export interface AmiStackProps extends cdk.StackProps {
+  // The subnet ID in which the Packer builder and test-harness EC2 instances will run
   subnetId: string,
+  // The name of the S3 bucket in which the source code should be placed
   sourceBucketName: string,
+  // The S3 key where the updated AMI-source ZIP file will be placed by the user
   sourceKey: string,
+  // The Docker repo (ECR/Docker Hub) where the test-harness Docker repo lives
   testHarnessRepoName: string,
+  // (Optional) Map of spoke account-IDs/regions with which the AMI should be shared
   shareWith?: AccountSharingMap,
+  // (Optional) Number of days to retain logs
   logRetentionDays?: number,
+  // (Optional) Number of days to retain CodePipeline artifacts
   artifactRetentionDays?: number,
+  // (Optional) Number of minutes to wait for CodeBuild (build/test) actions to complete
   buildTimeoutMinutes?: number,
+  // (Optional) Packer version number
   packerVersion?: string
 }
 
+// Minimum set of EC2 permissions required for Packer and test harness to work
 const ec2InteractionPolicyStatement = new iam.PolicyStatement().
   addAllResources().
   addActions(
@@ -69,6 +80,21 @@ const ec2InteractionPolicyStatement = new iam.PolicyStatement().
     "ec2:TerminateInstances"
   );
 
+// Subclass of sfn.Task that has built-in retries for Lambda transient errors.
+// See https://docs.aws.amazon.com/step-functions/latest/dg/bp-lambda-serviceexception.html
+// for the rationale behind this.
+class RetryTask extends sfn.Task {
+  constructor(scope: cdk.Construct, id: string, props: sfn.TaskProps) {
+    super(scope, id, props);
+    this.addRetry({
+      errors: ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+      backoffRate: 2,
+      intervalSeconds: 2,
+      maxAttempts: 6
+    });
+  }
+}
+
 export class AmiBuildPipeline extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props: AmiStackProps) {
     super(scope, id + "BuildPipeline", props);
@@ -76,6 +102,8 @@ export class AmiBuildPipeline extends cdk.Stack {
     // Remove all leading '/' characters from the source key
     props.sourceKey = props.sourceKey.replace(/^\/+/, "");
 
+    // The AMI source bucket should already have been created elsewhere, and
+    // must have versioning enabled.
     const sourceBucket = s3.Bucket.import(this, "AmiSourceBucket", {
       bucketName: props.sourceBucketName
     });
@@ -91,7 +119,8 @@ export class AmiBuildPipeline extends cdk.Stack {
       }
     );
 
-    // ECR repository in which to place AMI test harness image
+    // ECR repository in which the test harness lives.  It is created
+    // externally.
     const testHarnessImageRepo = ecr.Repository.import(this, "TestHarnessImageRepo", {
       repositoryName: props.testHarnessRepoName,
     });
@@ -102,7 +131,7 @@ export class AmiBuildPipeline extends cdk.Stack {
     });
     for (const accountId in props.shareWith) {
       if (props.shareWith.hasOwnProperty(accountId)) {
-        // Allow destination account to describe and decrypt key
+        // Allow each spoke account to use the key
         amiEncryptionKey.addToResourcePolicy(
           new iam.PolicyStatement()
             .addArnPrincipal(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
@@ -112,7 +141,6 @@ export class AmiBuildPipeline extends cdk.Stack {
             )
             .addAllResources()
         );
-        // Destination account decrypts AMI via KMS grant to EC2, so allow that too
         amiEncryptionKey.addToResourcePolicy(
           new iam.PolicyStatement()
             .addArnPrincipal(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
@@ -122,13 +150,13 @@ export class AmiBuildPipeline extends cdk.Stack {
         );
       }
     }
-
+    // Create an alias for the AMI encryption key
     const amiEncryptionKeyAlias = new kms.EncryptionKeyAlias(this, "AmiEncryptionKeyAlias", {
       alias: `alias/ami/${id}`,
       key: amiEncryptionKey
     });
 
-    // AMI builder CodeBuild Project
+    // AMI builder CodeBuild Project.  Uses Packer image.
     const amiBuildProject = new codebuild.PipelineProject(this, "AmiBuildProject", {
       projectName: `AmiBuilder-${id}`,
       environment: {
@@ -148,7 +176,7 @@ export class AmiBuildPipeline extends cdk.Stack {
     });
     amiBuildProject.addToRolePolicy(ec2InteractionPolicyStatement);
 
-    // AMI test harness CodeBuild Project
+    // AMI test harness CodeBuild Project.  Uses test-harness image.
     const amiTestProject = new codebuild.PipelineProject(this, "AmiTestProject", {
       projectName: `AmiTester-${id}`,
       buildSpec: "test/buildspec.yml",
@@ -163,8 +191,8 @@ export class AmiBuildPipeline extends cdk.Stack {
     });
     amiTestProject.addToRolePolicy(ec2InteractionPolicyStatement);
 
-    // Ensure AMI builder can use encryptionß key to encrypt snapshots and AMI
-    // test harness can decrypt them when starting test instances
+    // Ensure AMI builder can use encryption key to encrypt snapshots. Ensure AMI
+    // test harness can decrypt them when starting test instances.
     for (const project of [amiBuildProject, amiTestProject]) {
       if (project.role) {
         amiEncryptionKey.addToResourcePolicy(
@@ -193,11 +221,12 @@ export class AmiBuildPipeline extends cdk.Stack {
       }
     }
 
-    // Construct the build-and-test Pipeline
+    // Declare output artifacts
     const buildOutput = new codepipeline.Artifact("BuildOutput");
     const sourceOutput = new codepipeline.Artifact("SourceOutput");
     const testOutput = new codepipeline.Artifact("TestOutput");
 
+    // Declare actions
     const sourceAction = new actions.S3SourceAction({
       actionName: "Source",
       bucket: sourceBucket,
@@ -220,7 +249,8 @@ export class AmiBuildPipeline extends cdk.Stack {
       output: testOutput
     });
 
-    // AMI copier step function and tasks
+    // AMI-copier Lambda functions are located in the copy-ami subdirectory.
+    // CDK will handle zipping and uploading the code.
     const copyAmiAssetCode = new lambda.AssetCode(path.join(__dirname, "copy-ami"));
 
     // Success notifier
@@ -243,7 +273,7 @@ export class AmiBuildPipeline extends cdk.Stack {
         .addAllResources()
     );
 
-    const successTask = new sfn.Task(this, "PutJobSuccessTask", {
+    const successTask = new RetryTask(this, "PutJobSuccessTask", {
       resource: successFunction
     });
 
@@ -354,7 +384,7 @@ export class AmiBuildPipeline extends cdk.Stack {
     for (const accountId in props.shareWith) {
       if (props.shareWith.hasOwnProperty(accountId)) {
         for (const region of props.shareWith[accountId]) {
-          const copySnapshotTask = new sfn.Task(this, `CopySnapshotTask${accountId}${region}`, {
+          const copySnapshotTask = new RetryTask(this, `CopySnapshotTask${accountId}${region}`, {
             resource: copySnapshotFunction,
             parameters: {
               "sourceImageId.$": "$.sourceImageId",
@@ -367,18 +397,11 @@ export class AmiBuildPipeline extends cdk.Stack {
             }
           });
 
-          const checkSnapshotTask = new sfn.Task(this, `CheckSnapshotTask${accountId}${region}`, {
+          const checkSnapshotTask = new RetryTask(this, `CheckSnapshotTask${accountId}${region}`, {
             resource: checkSnapshotFunction,
           });
 
-          const failureTask = new sfn.Task(this, `PutJobFailureTask${accountId}${region}`, {
-            resource: failureFunction,
-          });
-          failureTask.next(new sfn.Fail(this, `FailCopy${accountId}${region}`, {
-            cause: "Snapshot copy failed"
-          }));
-
-          const registerImageTask = new sfn.Task(this, `RegisterImageTask${accountId}${region}`, {
+          const registerImageTask = new RetryTask(this, `RegisterImageTask${accountId}${region}`, {
             resource: registerImageFunction,
           });
 
@@ -395,10 +418,6 @@ export class AmiBuildPipeline extends cdk.Stack {
                 sfn.Condition.stringEquals("$.snapshotState", "completed"),
                 registerImageTask
               )
-              .when(
-                sfn.Condition.stringEquals("$.snapshotState", "error"),
-                failureTask
-              )
               .otherwise(waitStep.next(checkSnapshotTask))
             );
 
@@ -409,6 +428,12 @@ export class AmiBuildPipeline extends cdk.Stack {
 
     const copyTasksParallel = new sfn.Parallel(this, "CopyTasks");
     copyTasksParallel.branch(...branches);
+
+    copyTasksParallel.addCatch(new RetryTask(this, `PutJobFailureTask`, {
+      resource: failureFunction,
+    }).next(new sfn.Fail(this, `FailCopy`, {
+      cause: "Snapshot copy failed"
+    })));
 
     const copyStateMachine = new sfn.StateMachine(this, "AmiCopyStateMachine", {
       definition: copyTasksParallel
