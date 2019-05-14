@@ -216,7 +216,7 @@ async function runTest(instance, keyPath) {
 }
 
 /*
- * Tag a machine image (AMI) with the specified tags.
+ * Tag a machine image (AMI) and its corresponding snapshot(s) with the specified tags.
  */
 async function tagImage(amiId, tags) {
     const ec2 = new aws.EC2();
@@ -231,8 +231,14 @@ async function tagImage(amiId, tags) {
         }
     }
 
+    const ami = await ec2.describeImages({
+        ImageIds: [amiId]
+    }).promise();
+    const snapshots = ami.Images[0].BlockDeviceMappings.map(mapping => mapping.Ebs.SnapshotId);
+    const resourcesToTag = [amiId].concat(snapshots);
+
     const params = {
-        Resources: [amiId],
+        Resources: resourcesToTag,
         Tags: tagArray
     };
     await ec2.createTags(params).promise();
