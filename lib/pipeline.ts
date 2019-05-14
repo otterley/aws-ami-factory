@@ -13,7 +13,7 @@ import sfn = require("@aws-cdk/aws-stepfunctions");
 import path = require("path");
 import { DestinationRoleName } from "../lib/common";
 
-const DefaultPackerVersion = "1.3.5";
+const DefaultPackerVersion = "1.4.0";
 
 // Map of spoke-account IDs to regions with which AMI should be shared
 export interface AccountSharingMap {
@@ -380,64 +380,48 @@ export class AmiBuildPipeline extends cdk.Stack {
       }
     }
 
-    const branches: sfn.IChainable[] = [];
-    for (const accountId in props.shareWith) {
-      if (props.shareWith.hasOwnProperty(accountId)) {
-        for (const region of props.shareWith[accountId]) {
-          const copySnapshotTask = new RetryTask(this, `CopySnapshotTask${accountId}${region}`, {
-            resource: copySnapshotFunction,
-            parameters: {
-              "sourceImageId.$": "$.sourceImageId",
-              "jobId.$": "$.jobId",
-              destinationAccountId: accountId,
-              destinationRegion: region,
-              destinationRoleName: DestinationRoleName,
-              kmsKeyAlias: `alias/ami/${id}`,
-              amiName: id,
-            }
-          });
-
-          const checkSnapshotTask = new RetryTask(this, `CheckSnapshotTask${accountId}${region}`, {
-            resource: checkSnapshotFunction,
-          });
-
-          const registerImageTask = new RetryTask(this, `RegisterImageTask${accountId}${region}`, {
-            resource: registerImageFunction,
-          });
-
-          const waitStep = new sfn.Wait(this, `WaitAndRecheck${accountId}${region}`, {
-            duration: sfn.WaitDuration.seconds(30)
-          });
-
-          const progressChoice = new sfn.Choice(this, `EvalSnapshotProgress${accountId}${region}`);
-
-          const chain = copySnapshotTask
-            .next(checkSnapshotTask)
-            .next(progressChoice
-              .when(
-                sfn.Condition.stringEquals("$.snapshotState", "completed"),
-                registerImageTask
-              )
-              .otherwise(waitStep.next(checkSnapshotTask))
-            );
-
-          branches.push(chain);
-        }
-      }
-    }
-
-    const copyTasksParallel = new sfn.Parallel(this, "CopyTasks");
-    copyTasksParallel.branch(...branches);
-
-    copyTasksParallel.addCatch(new RetryTask(this, `PutJobFailureTask`, {
+    const failTask = new RetryTask(this, `PutJobFailureTask`, {
       resource: failureFunction,
     }).next(new sfn.Fail(this, `FailCopy`, {
       cause: "Snapshot copy failed"
-    })));
+    }));
+
+    const copySnapshotTask = new RetryTask(this, `CopySnapshotTask`, {
+      resource: copySnapshotFunction,
+      parameters: {
+        "sourceImageId.$": "$.sourceImageId",
+        "jobId.$": "$.jobId",
+        destinationRoleName: DestinationRoleName,
+        kmsKeyAlias: `alias/ami/${id}`,
+        amiName: id,
+      }
+    }).addCatch(failTask);
+
+    const checkSnapshotTask = new RetryTask(this, `CheckSnapshotTask`, {
+      resource: checkSnapshotFunction,
+    }).addCatch(failTask);
+
+    const registerImageTask = new RetryTask(this, `RegisterImageTask`, {
+      resource: registerImageFunction,
+    }).addCatch(failTask).next(successTask);
+
+    const waitStep = new sfn.Wait(this, `WaitAndRecheck`, {
+      duration: sfn.WaitDuration.seconds(30)
+    });
+
+    const progressChoice = new sfn.Choice(this, `EvalSnapshotProgress`)
+      .when(
+        sfn.Condition.stringEquals("$.snapshotState", "completed"),
+        registerImageTask
+      )
+      .otherwise(
+        waitStep.next(checkSnapshotTask)
+      );
 
     const copyStateMachine = new sfn.StateMachine(this, "AmiCopyStateMachine", {
-      definition: copyTasksParallel
-        .next(successTask)
+      definition: copySnapshotTask
+        .next(checkSnapshotTask)
+        .next(progressChoice)
     });
 
     const kickoffCopyFunction = new lambda.Function(this, "KickoffAmiCopyFunction", {
@@ -452,7 +436,6 @@ export class AmiBuildPipeline extends cdk.Stack {
       environment: {
         INPUT_ARTIFACT_NAME: testOutput.artifactName,
         STATE_MACHINE_ARN: copyStateMachine.stateMachineArn,
-        SHARE_WITH_ACCOUNTS: Object.keys(props.shareWith || {}).join(",")
       },
     });
     kickoffCopyFunction.addToRolePolicy(
@@ -466,13 +449,27 @@ export class AmiBuildPipeline extends cdk.Stack {
         .addAllResources()
     );
 
+    const copyActions: codepipeline.Action[] = [];
     // Invoke step-function launcher to start AMI copy
-    const copyAction = new actions.LambdaInvokeAction({
-      actionName: "Copy",
-      inputs: [testOutput],
-      lambda: kickoffCopyFunction,
-      userParameters: JSON.stringify(props.shareWith),
-    });
+
+    for (const accountId in props.shareWith) {
+      if (props.shareWith.hasOwnProperty(accountId)) {
+        const regions = props.shareWith[accountId];
+        regions.forEach(region => {
+          const action = new actions.LambdaInvokeAction({
+            actionName: `Copy-${accountId}-${region}`,
+            inputs: [testOutput],
+            lambda: kickoffCopyFunction,
+            userParameters: JSON.stringify({
+              destinationAccountId: accountId,
+              destinationRegion: region
+            }),
+            runOrder: 1 // these should all run in parallel
+          });
+          copyActions.push(action);
+        });
+      }
+    }
 
     // Build pipeline
     new codepipeline.Pipeline(this, "AmiBuildPipeline", {
@@ -493,7 +490,7 @@ export class AmiBuildPipeline extends cdk.Stack {
         },
         {
           name: "Copy",
-          actions: [copyAction]
+          actions: copyActions
         }
       ]
     });

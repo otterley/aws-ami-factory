@@ -9,6 +9,10 @@ $(error TEST_HARNESS_IMAGE must be set)
 endif
 TEST_HARNESS_IMAGE_TAG := $(TEST_HARNESS_IMAGE):$(VERSION)
 
-default:
-	docker build -t $(TEST_HARNESS_IMAGE_TAG) .
+.PHONY: push
+push: build
 	docker push $(TEST_HARNESS_IMAGE_TAG)
+
+.PHONY: build
+build:
+	docker build -t $(TEST_HARNESS_IMAGE_TAG) .
