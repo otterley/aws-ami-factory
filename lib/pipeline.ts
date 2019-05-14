@@ -11,7 +11,7 @@ import lambda = require("@aws-cdk/aws-lambda");
 import s3 = require("@aws-cdk/aws-s3");
 import sfn = require("@aws-cdk/aws-stepfunctions");
 import path = require("path");
-import { DestinationRoleName } from "../lib/common";
+import { DestinationRoleName } from "./common";
 
 const DefaultPackerVersion = "1.4.0";
 
@@ -387,23 +387,16 @@ export class AmiBuildPipeline extends cdk.Stack {
     }));
 
     const copySnapshotTask = new RetryTask(this, `CopySnapshotTask`, {
-      resource: copySnapshotFunction,
-      parameters: {
-        "sourceImageId.$": "$.sourceImageId",
-        "jobId.$": "$.jobId",
-        destinationRoleName: DestinationRoleName,
-        kmsKeyAlias: `alias/ami/${id}`,
-        amiName: id,
-      }
-    }).addCatch(failTask);
+      resource: copySnapshotFunction
+    }).addCatch(failTask, { resultPath: "$.errorInfo" });
 
     const checkSnapshotTask = new RetryTask(this, `CheckSnapshotTask`, {
       resource: checkSnapshotFunction,
-    }).addCatch(failTask);
+    }).addCatch(failTask, { resultPath: "$.errorInfo" });
 
     const registerImageTask = new RetryTask(this, `RegisterImageTask`, {
       resource: registerImageFunction,
-    }).addCatch(failTask).next(successTask);
+    }).addCatch(failTask, { resultPath: "$.errorInfo" }).next(successTask);
 
     const waitStep = new sfn.Wait(this, `WaitAndRecheck`, {
       duration: sfn.WaitDuration.seconds(30)
@@ -413,6 +406,10 @@ export class AmiBuildPipeline extends cdk.Stack {
       .when(
         sfn.Condition.stringEquals("$.snapshotState", "completed"),
         registerImageTask
+      )
+      .when(
+        sfn.Condition.stringEquals("$.snapshotState", "error"),
+        failTask
       )
       .otherwise(
         waitStep.next(checkSnapshotTask)
@@ -462,7 +459,10 @@ export class AmiBuildPipeline extends cdk.Stack {
             lambda: kickoffCopyFunction,
             userParameters: JSON.stringify({
               destinationAccountId: accountId,
-              destinationRegion: region
+              destinationRegion: region,
+              destinationRoleName: DestinationRoleName,
+              kmsKeyAlias: `alias/ami/${id}`,
+              amiName: id,
             }),
             runOrder: 1 // these should all run in parallel
           });
