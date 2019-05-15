@@ -6,8 +6,8 @@ rules:
     # when trying to construct literal Fn::Sub() arguments.
     no-invalid-template-strings: false
 
-    # No preference for quotes (?)
-    quotemark: [true, "double"]
+    # Prefer single-quotes
+    quotemark: [true, "single"]
 
     # Our props struct currently don't start with "I"
     interface-name: false
@@ -37,6 +37,7 @@ rules:
     # Super annoying
     object-literal-sort-keys: false
     object-literal-key-quotes: [true, "as-needed"]
+    ordered-imports: false
 
     # Trailing comma gets into a fight with itself when splitting lists over multiple lines
     trailing-comma: false

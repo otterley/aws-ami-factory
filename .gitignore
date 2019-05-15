@@ -7,6 +7,7 @@ vendor/
 .vscode/
 manifest.json
 pipeline-config.mk
+pipeline-config.yaml
 *.js
 *.d.ts
 

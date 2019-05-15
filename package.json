@@ -29,6 +29,9 @@
     "@aws-cdk/aws-s3": "^0.30.0",
     "@aws-cdk/aws-stepfunctions": "^0.30.0",
     "@aws-cdk/cdk": "^0.30.0",
+    "@types/js-yaml": "^3.12.1",
+    "ajv": "^6.10.0",
+    "js-yaml": "^3.13.1",
     "source-map-support": "^0.5.9"
   }
 }
