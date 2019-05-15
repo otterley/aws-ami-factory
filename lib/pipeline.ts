@@ -13,7 +13,13 @@ import sfn = require("@aws-cdk/aws-stepfunctions");
 import path = require("path");
 import { DestinationRoleName } from "./common";
 
-const DefaultPackerVersion = "1.4.0";
+// NOTE: Packer 1.4.0 has a bug that causes it not to use the specified
+// KMS CMK for encrypting snapshots.  Packer 1.4.1 will address this issue.
+// https://github.com/hashicorp/packer/issues/7499
+// Unfortunately, Packer 1.3.5 leaves unencrypted AMI snapshots behind, so
+// they'll have to be cleaned up via a garbage collector.
+// https://github.com/hashicorp/packer/issues/7514
+const DefaultPackerVersion = "1.3.5";
 
 // Map of spoke-account IDs to regions with which AMI should be shared
 export interface AccountSharingMap {
