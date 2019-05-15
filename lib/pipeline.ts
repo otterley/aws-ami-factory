@@ -448,7 +448,7 @@ export class AmiBuildPipeline extends cdk.Stack {
     );
     kickoffCopyFunction.addToRolePolicy(
       new iam.PolicyStatement()
-        .addActions("ec2:ModifySnapshotAttribute", "ec2:DescribeImages")
+        .addActions("ec2:ModifySnapshotAttribute", "ec2:DescribeImages", "codepipeline:PutJobFailureResult")
         .addAllResources()
     );
 
