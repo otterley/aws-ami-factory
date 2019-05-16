@@ -27,7 +27,8 @@ export class AmiSnapshotCopyRoleStack extends cdk.Stack {
                 'ec2:RegisterImage',
                 'kms:CreateAlias',
                 'kms:CreateKey',
-                'kms:DescribeKey'
+                'kms:DescribeKey',
+                'kms:PutKeyPolicy'
             )
         );
         role.addToPolicy(new iam.PolicyStatement()

@@ -13,17 +13,19 @@ import sfn = require('@aws-cdk/aws-stepfunctions');
 import path = require('path');
 import { DestinationRoleName } from './common';
 
-// NOTE: Packer 1.4.0 has a bug that causes it not to use the specified
-// KMS CMK for encrypting snapshots.  Packer 1.4.1 will address this issue.
-// https://github.com/hashicorp/packer/issues/7499
+// NOTE: Packer 1.4.0 has a bug that causes it not to use the specified KMS CMK
+// for encrypting snapshots.  Packer 1.4.1 (not yet released) will address this
+// issue. https://github.com/hashicorp/packer/issues/7499
+//
 // Unfortunately, Packer 1.3.5 leaves unencrypted AMI snapshots behind, so
 // they'll have to be cleaned up via a garbage collector.
 // https://github.com/hashicorp/packer/issues/7514
 const DefaultPackerVersion = '1.3.5';
 
 // Map of spoke-account IDs to regions with which AMI should be shared
-export interface AccountSharingMap {
-  [accountID: string]: string[];
+export interface ShareWith {
+  accountId: string,
+  regions: string[]
 }
 
 export interface AmiBuildPipelineStackProps extends cdk.StackProps {
@@ -40,7 +42,7 @@ export interface AmiBuildPipelineStackProps extends cdk.StackProps {
   // Image tag for test harness image (default: latest)
   testHarnessImageTag?: string,
   // (Optional) Map of spoke account-IDs/regions with which the AMI should be shared
-  shareWith?: AccountSharingMap,
+  shareWith?: ShareWith[],
   // (Optional) Number of days to retain logs
   logRetentionDays?: number,
   // (Optional) Number of days to retain CodePipeline artifacts
@@ -139,27 +141,21 @@ export class AmiBuildPipelineStack extends cdk.Stack {
     const amiEncryptionKey = new kms.EncryptionKey(this, 'AmiEncryptionKey', {
       description: `AMI encryption key - ${props.amiName}`,
     });
-    for (const accountId in props.shareWith) {
-      if (props.shareWith.hasOwnProperty(accountId)) {
-        // Allow each spoke account to use the key
-        amiEncryptionKey.addToResourcePolicy(
-          new iam.PolicyStatement()
-            .addArnPrincipal(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
-            .addActions(
-              'kms:Decrypt',
-              'kms:DescribeKey'
-            )
-            .addAllResources()
-        );
-        amiEncryptionKey.addToResourcePolicy(
-          new iam.PolicyStatement()
-            .addArnPrincipal(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
-            .addAction('kms:CreateGrant')
-            .addAllResources()
-            .addCondition('Bool', { 'kms:GrantIsForAWSResource': true })
-        );
-      }
+    // Allow each spoke account to use the key
+    const keyPolicy1 = new iam.PolicyStatement()
+      .addActions('kms:Decrypt', 'kms:DescribeKey')
+      .addAllResources();
+    const keyPolicy2 = new iam.PolicyStatement()
+      .addAction('kms:CreateGrant')
+      .addAllResources()
+      .addCondition('Bool', { 'kms:GrantIsForAWSResource': true });
+    for (const shareWith of props.shareWith || []) {
+      keyPolicy1.addArnPrincipal(`arn:aws:iam::${shareWith.accountId}:role/${DestinationRoleName}`);
+      keyPolicy2.addArnPrincipal(`arn:aws:iam::${shareWith.accountId}:role/${DestinationRoleName}`);
     }
+    amiEncryptionKey.addToResourcePolicy(keyPolicy1);
+    amiEncryptionKey.addToResourcePolicy(keyPolicy2);
+
     // Create an alias for the AMI encryption key
     const amiEncryptionKeyAlias = new kms.EncryptionKeyAlias(this, 'AmiEncryptionKeyAlias', {
       alias: `alias/ami/${props.amiName}`,
@@ -328,15 +324,14 @@ export class AmiBuildPipelineStack extends cdk.Stack {
         .addAction('ec2:DescribeImages')
         .addAllResources()
     );
-    for (const accountId in props.shareWith) {
-      if (props.shareWith.hasOwnProperty(accountId)) {
-        copySnapshotFunction.addToRolePolicy(
-          new iam.PolicyStatement()
-            .addActions('sts:AssumeRole')
-            .addResource(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
-        );
-      }
+    for (const shareWith of props.shareWith || []) {
+      copySnapshotFunction.addToRolePolicy(
+        new iam.PolicyStatement()
+          .addActions('sts:AssumeRole')
+          .addResource(`arn:aws:iam::${shareWith.accountId}:role/${DestinationRoleName}`)
+      );
     }
+
 
     // Function to check snapshot progress
     const checkSnapshotFunction = new lambda.Function(this, 'CheckSnapshotFunction', {
@@ -354,15 +349,14 @@ export class AmiBuildPipelineStack extends cdk.Stack {
         .addAction('sts:GetCallerIdentity')
         .addAllResources()
     );
-    for (const accountId in props.shareWith) {
-      if (props.shareWith.hasOwnProperty(accountId)) {
-        checkSnapshotFunction.addToRolePolicy(
-          new iam.PolicyStatement()
-            .addActions('sts:AssumeRole')
-            .addResource(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
-        );
-      }
+    for (const shareWith of props.shareWith || []) {
+      checkSnapshotFunction.addToRolePolicy(
+        new iam.PolicyStatement()
+          .addActions('sts:AssumeRole')
+          .addResource(`arn:aws:iam::${shareWith.accountId}:role/${DestinationRoleName}`)
+      );
     }
+
 
     // Function to register AMI after snapshot copy
     const registerImageFunction = new lambda.Function(this, 'RegisterImageFunction', {
@@ -380,14 +374,12 @@ export class AmiBuildPipelineStack extends cdk.Stack {
         .addAction('sts:GetCallerIdentity')
         .addAllResources()
     );
-    for (const accountId in props.shareWith) {
-      if (props.shareWith.hasOwnProperty(accountId)) {
-        registerImageFunction.addToRolePolicy(
-          new iam.PolicyStatement()
-            .addActions('sts:AssumeRole')
-            .addResource(`arn:aws:iam::${accountId}:role/${DestinationRoleName}`)
-        );
-      }
+    for (const shareWith of props.shareWith || []) {
+      registerImageFunction.addToRolePolicy(
+        new iam.PolicyStatement()
+          .addActions('sts:AssumeRole')
+          .addResource(`arn:aws:iam::${shareWith.accountId}:role/${DestinationRoleName}`)
+      );
     }
 
     // Step function states
@@ -462,27 +454,24 @@ export class AmiBuildPipelineStack extends cdk.Stack {
 
     const copyActions: codepipeline.Action[] = [];
     // Invoke step-function launcher to start AMI copy
-
-    for (const accountId in props.shareWith) {
-      if (props.shareWith.hasOwnProperty(accountId)) {
-        const regions = props.shareWith[accountId];
-        regions.forEach(region => {
-          const action = new actions.LambdaInvokeAction({
-            actionName: `Copy-${accountId}-${region}`,
-            inputs: [testOutput],
-            lambda: kickoffCopyFunction,
-            userParameters: JSON.stringify({
-              destinationAccountId: accountId,
-              destinationRegion: region,
-              destinationRoleName: DestinationRoleName,
-              kmsKeyAlias: `alias/ami/${props.amiName}`,
-              amiName: props.amiName,
-            }),
-            runOrder: 1 // these should all run in parallel
-          });
-          copyActions.push(action);
+    for (const shareWith of props.shareWith || []) {
+      const regions = shareWith.regions;
+      regions.forEach(region => {
+        const action = new actions.LambdaInvokeAction({
+          actionName: `Copy-${shareWith.accountId}-${region}`,
+          inputs: [testOutput],
+          lambda: kickoffCopyFunction,
+          userParameters: JSON.stringify({
+            destinationAccountId: shareWith.accountId,
+            destinationRegion: region,
+            destinationRoleName: DestinationRoleName,
+            kmsKeyAlias: `alias/ami/${props.amiName}`,
+            amiName: props.amiName,
+          }),
+          runOrder: 1 // these should all run in parallel
         });
-      }
+        copyActions.push(action);
+      });
     }
 
     // Build pipeline
