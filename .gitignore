@@ -10,6 +10,7 @@ pipeline-config.mk
 pipeline-config.yaml
 *.js
 *.d.ts
+cdk.out/
 
 # CDK asset staging directory
 .cdk.staging
