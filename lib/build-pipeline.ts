@@ -5,11 +5,9 @@
 
 import actions = require('@aws-cdk/aws-codepipeline-actions');
 import cdk = require('@aws-cdk/core');
-
 import cloudtrail = require('@aws-cdk/aws-cloudtrail');
 import codebuild = require('@aws-cdk/aws-codebuild');
 import codepipeline = require('@aws-cdk/aws-codepipeline');
-// import ecr = require('@aws-cdk/aws-ecr');
 import ecrAssets = require('@aws-cdk/aws-ecr-assets');
 import iam = require('@aws-cdk/aws-iam');
 import kms = require('@aws-cdk/aws-kms');
