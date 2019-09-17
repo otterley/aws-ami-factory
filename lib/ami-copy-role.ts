@@ -23,21 +23,21 @@ export class AmiCopyRoleStack extends cdk.Stack {
             assumedBy: new iam.AccountPrincipal(props.builderAccountId),
             roleName: DestinationRoleName
         });
-        const basePolicy = new iam.PolicyStatement();
-        basePolicy.addAllResources();
-        basePolicy.addActions(
-            'ec2:CopySnapshot',
-            'ec2:CreateImage',
-            'ec2:CreateTags',
-            'ec2:DescribeImages',
-            'ec2:DescribeSnapshots',
-            'ec2:RegisterImage',
-            'kms:CreateAlias',
-            'kms:CreateKey',
-            'kms:DescribeKey',
-            'kms:PutKeyPolicy'
-        );
-        role.addToPolicy(basePolicy);
+        role.addToPolicy(new iam.PolicyStatement({
+            actions: [
+                'ec2:CopySnapshot',
+                'ec2:CreateImage',
+                'ec2:CreateTags',
+                'ec2:DescribeImages',
+                'ec2:DescribeSnapshots',
+                'ec2:RegisterImage',
+                'kms:CreateAlias',
+                'kms:CreateKey',
+                'kms:DescribeKey',
+                'kms:PutKeyPolicy'
+            ],
+            resources: ['*']
+        }));
 
         const kmsGrantPolicy = new iam.PolicyStatement();
         kmsGrantPolicy.addAllResources();
