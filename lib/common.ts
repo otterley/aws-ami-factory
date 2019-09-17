@@ -1,3 +1,8 @@
+/*
+ * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import path = require('path');
 import fs = require('fs');
 import yaml = require('js-yaml');

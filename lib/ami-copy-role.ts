@@ -1,3 +1,8 @@
+/*
+ * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import iam = require('@aws-cdk/aws-iam');
 import cdk = require('@aws-cdk/core');
 import { AppTagName, appTagValue, DestinationRoleName } from './common';
