@@ -123,7 +123,7 @@ export class AmiBuildPipelineStack extends cdk.Stack {
             }
         }
 
-        const destinationRoleArns = (props.shareWith || []).map(t => `arn:aws:iam::${t.accountId}:role/${DestinationRoleName}`)
+        const destinationRoleArns = (props.shareWith || []).map(t => `arn:aws:iam::${t.accountId}:role/${DestinationRoleName}`);
 
         // Remove all leading '/' characters from the source key
         props.sourceS3Key = props.sourceS3Key.replace(/^\/+/, '');
@@ -317,7 +317,6 @@ export class AmiBuildPipelineStack extends cdk.Stack {
             actions: ['codepipeline:PutJobFailureResult'],
             resources: ['*']
         }));
-
 
         // Function to start snapshot copy
         const copySnapshotFunction = new lambda.Function(this, 'CopySnapshotFunction', {
