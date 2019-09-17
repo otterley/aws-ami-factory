@@ -371,9 +371,9 @@ export class AmiBuildPipelineStack extends cdk.Stack {
         }));
 
         // Step function states
-        const failTask = new RetriableTask(this, `Copy failed`, {
+        const failTask = new RetriableTask(this, 'Copy failed', {
             task: new tasks.InvokeFunction(failureFunction),
-        }).next(new sfn.Fail(this, `Fail`, {
+        }).next(new sfn.Fail(this, 'Fail', {
             cause: 'Snapshot copy failed'
         }));
 
