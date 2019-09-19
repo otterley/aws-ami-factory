@@ -16,7 +16,7 @@ import s3 = require('@aws-cdk/aws-s3');
 import sfn = require('@aws-cdk/aws-stepfunctions');
 import tasks = require('@aws-cdk/aws-stepfunctions-tasks');
 import path = require('path');
-import { appTagValue, AppTagName, DestinationRoleName } from './common';
+import { appTagValue, AppTagName, getDestinationRoleName } from './common';
 
 const DefaultPackerVersion = '1.4.3';
 
@@ -27,7 +27,7 @@ export interface ShareWith {
 }
 
 export interface AmiBuildPipelineStackProps extends cdk.StackProps {
-    // Name of the AMI to be build
+    // Name of the AMI to be built
     amiName: string,
     // The subnet ID in which the Packer builder and test-harness EC2 instances will run
     instanceSubnetId: string,
@@ -121,7 +121,8 @@ export class AmiBuildPipelineStack extends cdk.Stack {
             }
         }
 
-        const destinationRoleArns = (props.shareWith || []).map(t => `arn:aws:iam::${t.accountId}:role/${DestinationRoleName}`);
+        const destinationRoleName = getDestinationRoleName(props.amiName);
+        const destinationRoleArns = (props.shareWith || []).map(t => `arn:aws:iam::${t.accountId}:role/${destinationRoleName}`);
 
         // Remove all leading '/' characters from the source key
         props.sourceS3Key = props.sourceS3Key.replace(/^\/+/, '');
@@ -454,7 +455,7 @@ export class AmiBuildPipelineStack extends cdk.Stack {
                     userParameters: {
                         destinationAccountId: shareWith.accountId,
                         destinationRegion: region,
-                        destinationRoleName: DestinationRoleName,
+                        destinationRoleName: destinationRoleName,
                         kmsKeyAlias: `alias/ami/${props.amiName}`,
                         amiName: props.amiName,
                     },

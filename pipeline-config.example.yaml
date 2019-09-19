@@ -1,0 +1,19 @@
+amiName: myApp
+instanceSubnetId: subnet-0d20f3cd7f6315960
+sourceS3Bucket: ami-source-0ebaabeef
+sourceS3Key: example-ami.zip
+builderAccountId: 123456789012
+builderRegion: us-west-2
+shareWith:
+- accountId: 234567890123
+  regions:
+    - us-west-1
+    - us-east-2
+    - ap-northeast-1
+    - eu-west-1
+- accountId: 123456789012
+  regions:
+    - eu-central-1
+pipelineResourceTags:
+  AmiName: myApp
+  Creator: otterley

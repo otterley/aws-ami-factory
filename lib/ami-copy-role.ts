@@ -5,9 +5,10 @@
 
 import iam = require('@aws-cdk/aws-iam');
 import cdk = require('@aws-cdk/core');
-import { AppTagName, appTagValue, DestinationRoleName } from './common';
+import { AppTagName, appTagValue, getDestinationRoleName } from './common';
 
 export interface AmiCopyRoleProps extends cdk.StackProps {
+    amiName: string
     builderAccountId: string
 }
 
@@ -21,7 +22,7 @@ export class AmiCopyRoleStack extends cdk.Stack {
         // snapshot-copying and AMI-creation activities in this (spoke) account.
         const role = new iam.Role(this, 'Role', {
             assumedBy: new iam.AccountPrincipal(props.builderAccountId),
-            roleName: DestinationRoleName
+            roleName: getDestinationRoleName(props.amiName)
         });
         role.addToPolicy(new iam.PolicyStatement({
             actions: [

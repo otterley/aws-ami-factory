@@ -28,10 +28,11 @@ new AmiBuildPipelineStack(app, `AmiBuildPipeline-${config.amiName}`, {
 });
 
 for (const target of config.shareWith || []) {
-    new AmiCopyRoleStack(app, `AmiCopyRole-${target.accountId}`, {
+    new AmiCopyRoleStack(app, `AmiCopyRole-${config.amiName}-${target.accountId}`, {
         env: {
-            account: target.accountId,
+            account: target.accountId
         },
+        amiName: config.amiName,
         builderAccountId: config.builderAccountId
     });
 }

@@ -14,8 +14,8 @@ const ConfigPath = path.join(__dirname, '..', 'pipeline-config.yaml');
 
 // TODO: change this to be a URL
 const ApplicationName = 'AMIPipelineBuilder';
+const DestinationRolePrefix = 'AMICopyRole';
 
-export const DestinationRoleName = 'AMICopyRole';
 export const AppTagName = 'BuiltWith';
 
 interface ShareWith {
@@ -55,4 +55,8 @@ export function gitTag(): string {
 
 export function appTagValue(): string {
     return `${ApplicationName}@${gitTag()}`;
+}
+
+export function getDestinationRoleName(amiName: string): string {
+    return `${DestinationRolePrefix}-${amiName}`;
 }

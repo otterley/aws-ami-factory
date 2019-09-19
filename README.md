@@ -1,11 +1,30 @@
-# Amazon EC2 AMI Build Pipeline Construction Kit
+# Amazon EC2 AMI Factory
 
-This repository contains a kit for constructing build pipelines for Amazon EC2
-machine images (AMIs).  The pipelines are constructed using [AWS
+This repository contains a factory for constructing build pipelines for Amazon
+EC2 machine images (AMIs).  Each pipeline is provided by [AWS
 CodePipeline](https://aws.amazon.com/codepipeline/), and the build and test
 stages are performed using [AWS CodeBuild](https://aws.amazon.com/codebuild/).
 AMIs are built using [Hashicorp Packer](https://packer.io/) and tested with
 [InSpec by Chef](https://www.inspec.io/).
+
+## Differences between other approaches
+
+There are plenty of automated AMI builders already out there.  What makes this
+one different?
+
+* **Testing:** AMIs produced via AMI Factory are subject to automated testing.
+  Test suites are in fact *required* stages in the pipeline.
+* **Multi-account support:** Tested AMIs can be distributed to multiple
+  accounts.
+* **Multi-region support:** Tested AMIs can be be distributed to multiple
+  regions in each account.
+* **Encryption:** AMIs are encrypted by a KMS key in all target accounts and
+  regions.  This can meet stringent organizational requirements.
+* **Performance:** Tested AMIs are distributed to accounts and regions in
+  parallel.
+* **Preserves tags:** All AMI and backing snapshot tags are preserved.
+* **Easy configuration:** AMI Factory instances can be configured via a single,
+  easy-to-comprehend YAML file.
 
 ## Overview
 
@@ -19,101 +38,102 @@ final post-processing stage can also be configured.
   stage, and  tested according to the specification provided in the source ZIP
   file.  The AMI is tagged with a pass/fail status reflecting the results of the
   test.
+* Deployment stage: The AMI is deployed to the specified accounts and regions.
 
 ## Organization
 
 This repository contains:
 
-1. A CloudFormation template and supporting scripts for creating EC2 AMI build and test pipelines; and
-2. An example of an AMI source code repository in the [examples](examples/) subdirectory.
+1. A CDK application for generating an AMI build pipeline and the IAM roles required
+   in any foreign accounts to distribute images there
+2. Source code for the Docker image run in CodeBuild to run the AMI test harness
+3. An example of an AMI source code repository in the [examples](examples/)
+   subdirectory.
 
-## Preparing the test harness Docker image
+## Prerequisites
 
-Before starting anything, you'll want to build and upload the test-harness Docker
-image to a Docker image repository such as [Amazon ECR](https://aws.amazon.com/ecr/) or
-[Docker Hub](https://hub.docker.com).  You only need to do this once, and whenever
-an updated version of this kit is released that you wish to upgrade to.
+1. A local installation of [Docker](https://docs.docker.com/install/)
+2. A local installation of [Node.js](https://nodejs.org/) (currently 10.x LTS is
+   supported) and [npm] (https://www.npmjs.com/get-npm)
 
-You'll need Docker installed on your development system.  Install Docker for
-[Mac](https://hub.docker.com/editions/community/docker-ce-desktop-mac) or for
-[Windows](https://hub.docker.com/editions/community/docker-ce-desktop-windows)
-if you haven't already.
+We recommend using [nodenv](https://github.com/nodenv/nodenv) to install and manage
+Node.js versions.  It's available in Homebrew if you're a Mac or Linux user.
 
-You'll also need to [install the AWS
-CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-install.html) on
-your development system if you haven't already, and configure it with the
-appropriate credentials.
+## Setup steps
 
-Next, you'll need to set up a Docker image repository for the test-harness
-Docker image.  The name of the image suffix is up to you, but in these examples,
-we'll call it `inspec-test-harness`.
-
-### Amazon ECR
-
-If you're using Amazon ECR, you'll want to create the repository first, then log in:
-
-```
-export AWS_REGION=us-west-2 # set as appropriate
-eval "$(aws ecr get-login --no-include-email --region $AWS_REGION)"
-```
-
-Next, create a file in the root directory of this repository called
-`pipeline-config.mk`.  Set the `TEST_HARNESS_IMAGE`  variable in this file to
-point to the repository URI (which you can find in the ECR console).  For
-example,
-
-```
-TEST_HARNESS_IMAGE = 123456789012.dkr.ecr.${AWS_REGION}.amazonaws.com/inspec-test-harness
-```
-
-### Docker Hub
-
-Create a file in the root directory of this repository called
-`pipeline-config.mk`.  Set the `TEST_HARNESS_IMAGE` variable in this file
-to your Docker Hub username and repository name, such as:
-
-```
-TEST_HARNESS_IMAGE = mydockerid/inspec-test-harness
-```
-
-### Build and upload the test harness image
-
-Now, go to the `images/inspec-test-harness` directory and run `make`.  This will
-build the Docker image for the test harness and push it to the image registry.
-
+After checking out this code repository into a local directory, run `npm install`.
 
 ## Create a Build Pipeline
 
-### Create a config file with your site-specific information
+### Step 1: Create a configuration file
 
-Edit the `pipeline-config.mk` file in the root directory of this repository.  It
-should contain the following text:
+Create a file in this repository called `pipeline-config.yaml`.  The schema is
+documented in `pipeline-config-schema.json`, but here's an example:
 
+```yaml
+# The name of the AMI to be created
+amiName: myApp
+
+# A subnet ID (must be publicly routable via an Internet Gateway) in which
+# to build and test the AMI
+instanceSubnetId: subnet-0d20f3cd7f6315965
+
+# The S3 bucket and key in which the AMI source lives (see below)
+sourceS3Bucket: ami-source-4c709489
+sourceS3Key: example-ami.zip
+
+# The AWS account ID and region in which the build the pipeline
+builderAccountId: 523443631803
+builderRegion: us-west-2
+
+# Account IDs and regions to share the tested AMI with
+shareWith:
+- accountId: 123456789012
+  regions:
+    - us-west-1
+    - us-east-2
+    - ap-northeast-1
+    - eu-west-1
+- accountId: 234567890123
+  regions:
+    - eu-central-1
+
+# Any tags (key/value) you wish to place on the AMI pipeline resources
+# (CodePipeline, CodeBuild, Lambda functions, KMS keys, etc.)
+pipelineResourceTags:
+  AmiName: myApp
+  Creator: otterley
 ```
-TEST_HARNESS_IMAGE = <Name of the test harness image you created above>
-SUBNET_ID = <ID of subnet in which build-and-test instances will be run, e.g., subnet-abcd1234>
 
-# The following values are specific to each AMI repository:
-SOURCE_S3_BUCKET = <Name of S3 bucket used to hold AMI source code>
-SOURCE_S3_KEY = <Name of S3 object key containing AMI source code ZIP file>
-CLOUDTRAIL_S3_BUCKET = <Name of S3 bucket used by CloudTrail to record source code uploads>
-PIPELINE_S3_BUCKET = <Name of S3 bucket used to store pipeline artifacts>
+## Step 2: Create the necessary IAM roles in your AWS accounts
+
+Each account ID listed in the `shareWith` configuration will automatically have a
+CloudFormation stack associated with it that creates the AMI roles necessary for
+sharing the tested AMIs.  You'll need to build these one at a time.
+
+Fortunately it's easy to create.  First, you'll need to obtain valid IAM credentials
+for each account (environment variables are easiest).  Then simply run:
+
+```shell
+npx cdk deploy AmiCopyRole-${ami_name}-${account_id}
 ```
 
-The values for S3 bucket names and keys are your choice, and the buckets will be
-created by CloudFormation on your behalf.  (We highly recommend appending random
-data to the end of bucket names so as to make them not guessable -- you can
-generate suffixes by running `openssl rand -hex 4`.)
+You can also perform a dry run by running `npx cdk synth AmiCopyRole-${ami_name}-${account_id}`.
 
-With the exception of `TEST_HARNESS_IMAGE` and `SUBNET_ID`, the values should be
-unique for each AMI source repository you work with.  The `SOURCE_S3_BUCKET` and
-`SOURCE_S3_KEY` values are particularly important, as this is where CodePipeline
-will look to find the AMI source code.  We'll discuss in more detail below.
+To see all the configured stacks, you can run `npx cdk list`.
 
-The subnet ID must refer to a **public** VPC subnet that already exists in your
-account.  This subnet must have a working route to the Internet via an Internet
-Gateway (not a NAT gateway or instance).  **We recommend the VPC be a
-non-production VPC, preferably in a non-production AWS account.**
+## Step 3: Create the AMI builder pipeline
+
+This step is easy.  First, you'll need to obtain valid IAM credentials
+for the builder account.  Then simply run:
+
+```shell
+npx cdk deploy AmiBuildPipeline-${ami_name}
+```
+
+You can also perform a dry run by running `npx cdk synth AmiBuildPipeline-${ami_name}`.
+
+To see all the configured stacks, you can run `npx cdk list`.
 
 
 ## Your AMI source repository
@@ -136,6 +156,8 @@ test/inspec/inspec.yml
 You can generate a skeleton AMI source repository by running `make TARGET=<dir>
 skel` from the root directory of this repository.
 
+
+
 ### The `buildspec.yml` file
 
 A `buildspec.yml` file must exist at the root of your repository.  This file
@@ -145,16 +167,16 @@ skeleton builder, the file will look like [this](example/buildspec.yml).
 The most important requirements of `buildspec.yml` are:
 
 1. In the `build` phase, `packer` is used to generate the AMI.
-2. The `artifacts` section must include both `manifest.json` and `test/**/*`
-   so that the test stage can run properly.
+2. The `artifacts` section must include both `manifest.json` and `test/**/*` so
+   that the test stage can run properly.
 
 ### The `test` subdirectory and `test/buildspec.yml` file
 
-The `test` subdirectory is the root directory of all your tests.  An
-[example is provided here](example/test/).
+The `test` subdirectory is the root directory of all your tests.  An [example is
+provided here](example/test/).
 
-Your InSpec Profile will live in `test/inspec`.  In there, at a minimum, you'll need
-to customize `inspec.yml` and place your controls in the `controls`
+Your InSpec Profile will live in `test/inspec`.  In there, at a minimum, you'll
+need to customize `inspec.yml` and place your controls in the `controls`
 subdirectory.  Complete documentation for InSpec profiles can be found
 [here](https://www.inspec.io/docs/reference/profiles/).
 
