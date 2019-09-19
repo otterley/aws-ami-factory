@@ -455,7 +455,7 @@ export class AmiBuildPipelineStack extends cdk.Stack {
                     userParameters: {
                         destinationAccountId: shareWith.accountId,
                         destinationRegion: region,
-                        destinationRoleName: destinationRoleName,
+                        destinationRoleName,
                         kmsKeyAlias: `alias/ami/${props.amiName}`,
                         amiName: props.amiName,
                     },
