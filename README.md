@@ -54,7 +54,7 @@ This repository contains:
 
 1. A local installation of [Docker](https://docs.docker.com/install/)
 2. A local installation of [Node.js](https://nodejs.org/) (currently 10.x LTS is
-   supported) and [npm] (https://www.npmjs.com/get-npm)
+   supported) and [npm](https://www.npmjs.com/get-npm)
 
 We recommend using [nodenv](https://github.com/nodenv/nodenv) to install and manage
 Node.js versions.  It's available in Homebrew if you're a Mac or Linux user.
