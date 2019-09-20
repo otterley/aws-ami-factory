@@ -188,7 +188,7 @@ This spec file is used by CodeBuild during the Testing stage.   The build
 command contained in here must include the `testImage` command.  An example can
 be found [here](example/test/buildspec.yml).
 
-### Building and publishing your AMI to S3
+### Building and publishing your AMI source to S3
 
 Once you've assembled your AMI source code and test suite, you'll need to zip up
 the source directory and upload it to S3.  A `Makefile` is included in the
