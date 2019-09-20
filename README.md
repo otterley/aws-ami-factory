@@ -16,7 +16,7 @@ one different?
   Test suites are in fact *required* stages in the pipeline.
 * **Multi-account support:** Tested AMIs can be distributed to multiple
   accounts.
-* **Multi-region support:** Tested AMIs can be be distributed to multiple
+* **Multi-region support:** Tested AMIs can be distributed to multiple
   regions in each account.
 * **Encryption:** AMIs are encrypted by a KMS key in all target accounts and
   regions.  This can meet stringent organizational requirements.
@@ -202,6 +202,10 @@ make upload
 If you've configured the pipeline correctly, you should be able to see the AMI
 begin being built in the CodePipeline console.
 
+## Roadmap
+
+* Add support for CodeCommit repositories
+* Add support for GitHub repositories
 
 Authors
 -------
