@@ -32,8 +32,7 @@ one different?
 
 ## Overview
 
-The pipeline template is very simple and consists of three stages.  An optional
-final post-processing stage can also be configured.
+The pipeline template is very simple and consists of four stages.
 
 * Source stage: a ZIP file containing the AMI configuration is uploaded to an S3
   bucket.  This triggers the pipeline execution.
