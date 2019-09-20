@@ -209,6 +209,8 @@ begin being built in the CodePipeline console.
 
 * Add support for CodeCommit repositories
 * Add support for GitHub repositories
+* Automatically create VPC and subnets for build environment if needed
+* Allow construction of pipelines via Service Catalog
 
 Authors
 -------
