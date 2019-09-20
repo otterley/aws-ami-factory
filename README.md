@@ -195,7 +195,7 @@ Once you've assembled your AMI source code and test suite, you'll need to zip up
 the source directory and upload it to S3.  A `Makefile` is included in the
 skeleton directory for your convenience.  In there, you'll need to customize the
 `SOURCE_S3_BUCKET` and `SOURCE_S3_KEY` variables to be the same values as those
-in the `pipeline-config.mk` file you used to construct your pipeline.
+in the `pipeline-config.yaml` file you used to construct your pipeline.
 
 Then, you can simply run:
 
