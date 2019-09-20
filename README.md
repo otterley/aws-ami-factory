@@ -14,6 +14,10 @@ one different?
 
 * **Testing:** AMIs produced via AMI Factory are subject to automated testing.
   Test suites are in fact *required* stages in the pipeline.
+* **Uses Packer**: AMIs produced via AMI Factory are built with
+  [Packer](https://packer.io), so copying files and running arbitrary scripts is
+  easy.  Your AMI’s source code repository is authoritative for the build
+  process and files transferred during mastering.
 * **Multi-account support:** Tested AMIs can be distributed to multiple
   accounts.
 * **Multi-region support:** Tested AMIs can be distributed to multiple
