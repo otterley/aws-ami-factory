@@ -66,6 +66,8 @@ Node.js versions.  It's available in Homebrew if you're a Mac or Linux user.
 
 After checking out this code repository into a local directory, run `npm install`.
 
+Then, run `npm run build`.  This will compile all the TypeScript files to Javascript.
+
 ## Create a Build Pipeline
 
 ### Step 1: Create a configuration file
@@ -204,6 +206,11 @@ make upload
 
 If you've configured the pipeline correctly, you should be able to see the AMI
 begin being built in the CodePipeline console.
+
+## Troubleshooting
+
+1. Did you run `npm run build` first?
+2. If you modify any source code, be sure to run `npm run build`.
 
 ## Roadmap
 
