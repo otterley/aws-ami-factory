@@ -17,6 +17,7 @@ import sfn = require('@aws-cdk/aws-stepfunctions');
 import tasks = require('@aws-cdk/aws-stepfunctions-tasks');
 import path = require('path');
 import { appTagValue, AppTagName, getDestinationRoleName } from './common';
+import { spawnSync } from 'child_process';
 
 const DefaultPackerVersion = '1.4.3';
 
@@ -273,7 +274,9 @@ export class AmiBuildPipelineStack extends cdk.Stack {
 
         // AMI-copier Lambda functions are located in the copy-ami subdirectory.
         // CDK will handle zipping and uploading the code.
-        const copyAmiAssetCode = lambda.Code.fromAsset(path.join(__dirname, 'copy-ami'));
+        const copyAmiAssetPath = path.join(__dirname, 'copy-ami');
+        spawnSync('npm', ['install'], { cwd: copyAmiAssetPath });
+        const copyAmiAssetCode = lambda.Code.fromAsset(copyAmiAssetPath);
 
         // Success notifier
         const successFunction = new lambda.Function(this, 'PutJobSuccessFunction', {
