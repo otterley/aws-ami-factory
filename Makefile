@@ -2,23 +2,23 @@
 # SPDX-License-Identifier: Apache-2.0
 
 EXAMPLE_FILES := \
-        Makefile \
-        buildspec.yml \
-        packer.json \
-        files \
-        test
+		Makefile \
+		buildspec.yml \
+		packer.json \
+		files \
+		test
 
 default:
-        # Nothing to do
+		# Nothing to do
 
 .PHONY: skel
 skel: $(TARGET)
-        $(if $(TARGET),,$(error TARGET must be specified))
-        cd example; \
-          for file in $(EXAMPLE_FILES); do \
-            cp -R $$file $(TARGET); \
-          done
-        git init $(TARGET)
+		$(if $(TARGET),,$(error TARGET must be specified))
+		cd example; \
+			for file in $(EXAMPLE_FILES); do \
+				cp -R $$file $(TARGET); \
+			done
+		git init $(TARGET)
 
 $(TARGET):
-        install -d -m 755 $@
+		install -d -m 755 $@
