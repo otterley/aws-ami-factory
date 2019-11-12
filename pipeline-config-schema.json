@@ -8,8 +8,7 @@
         "builderRegion",
         "instanceSubnetId",
         "sourceS3Bucket",
-        "sourceS3Key",
-        "shareWith"
+        "sourceS3Key"
     ],
     "properties": {
         "amiName": {
@@ -38,7 +37,8 @@
         },
         "shareWith": {
             "type": "array",
-            "minItems": 1,
+            "description": "Optional list of accounts and regions to share tested AMIs with",
+            "minItems": 0,
             "items": {
                 "type": "object",
                 "required": ["accountId", "regions"],
