@@ -155,21 +155,23 @@ export class AmiBuildPipelineStack extends cdk.Stack {
             description: `AMI encryption key - ${props.amiName}`,
         });
         // Allow each spoke account to use the key
-        amiEncryptionKey.addToResourcePolicy(new iam.PolicyStatement({
-            actions: ['kms:Decrypt', 'kms:DescribeKey'],
-            resources: ['*'],
-            principals: destinationRoleArns.map(a => new iam.ArnPrincipal(a))
-        }));
-        amiEncryptionKey.addToResourcePolicy(new iam.PolicyStatement({
-            actions: ['kms:CreateGrant'],
-            resources: ['*'],
-            conditions: {
-                Bool: {
-                    'kms:GrantIsForAWSResource': true
-                }
-            },
-            principals: destinationRoleArns.map(a => new iam.ArnPrincipal(a))
-        }));
+        if (destinationRoleArns.length > 0) {
+            amiEncryptionKey.addToResourcePolicy(new iam.PolicyStatement({
+                actions: ['kms:Decrypt', 'kms:DescribeKey'],
+                resources: ['*'],
+                principals: destinationRoleArns.map(a => new iam.ArnPrincipal(a))
+            }));
+            amiEncryptionKey.addToResourcePolicy(new iam.PolicyStatement({
+                actions: ['kms:CreateGrant'],
+                resources: ['*'],
+                conditions: {
+                    Bool: {
+                        'kms:GrantIsForAWSResource': true
+                    }
+                },
+                principals: destinationRoleArns.map(a => new iam.ArnPrincipal(a))
+            }));
+        }
 
         // Create an alias for the AMI encryption key
         const amiEncryptionKeyAlias = new kms.Alias(this, 'AmiEncryptionKeyAlias', {
@@ -336,10 +338,12 @@ export class AmiBuildPipelineStack extends cdk.Stack {
             actions: ['ec2:DescribeImages'],
             resources: ['*']
         }));
-        copySnapshotFunction.addToRolePolicy(new iam.PolicyStatement({
-            actions: ['sts:AssumeRole'],
-            resources: destinationRoleArns
-        }));
+        if (destinationRoleArns.length > 0) {
+            copySnapshotFunction.addToRolePolicy(new iam.PolicyStatement({
+                actions: ['sts:AssumeRole'],
+                resources: destinationRoleArns
+            }));
+        }
 
         // Function to check snapshot progress
         const checkSnapshotFunction = new lambda.Function(this, 'CheckSnapshotFunction', {
@@ -352,10 +356,12 @@ export class AmiBuildPipelineStack extends cdk.Stack {
             runtime: lambda.Runtime.NODEJS_8_10,
             code: copyAmiAssetCode,
         });
-        checkSnapshotFunction.addToRolePolicy(new iam.PolicyStatement({
-            actions: ['sts:AssumeRole'],
-            resources: destinationRoleArns
-        }));
+        if (destinationRoleArns.length > 0) {
+            checkSnapshotFunction.addToRolePolicy(new iam.PolicyStatement({
+                actions: ['sts:AssumeRole'],
+                resources: destinationRoleArns
+            }));
+        }
 
         // Function to register AMI after snapshot copy
         const registerImageFunction = new lambda.Function(this, 'RegisterImageFunction', {
@@ -369,10 +375,12 @@ export class AmiBuildPipelineStack extends cdk.Stack {
             code: copyAmiAssetCode,
         });
         registerImageFunction.addToRolePolicy(getCallerIdentityStmt);
-        registerImageFunction.addToRolePolicy(new iam.PolicyStatement({
-            actions: ['sts:AssumeRole'],
-            resources: destinationRoleArns
-        }));
+        if (destinationRoleArns.length > 0) {
+            registerImageFunction.addToRolePolicy(new iam.PolicyStatement({
+                actions: ['sts:AssumeRole'],
+                resources: destinationRoleArns
+            }));
+        }
 
         // Step function states
         const failTask = new RetriableTask(this, 'Copy failed', {
