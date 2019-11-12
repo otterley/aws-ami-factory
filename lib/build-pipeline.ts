@@ -469,7 +469,7 @@ export class AmiBuildPipelineStack extends cdk.Stack {
         }
 
         // Build pipeline
-        new codepipeline.Pipeline(this, 'AmiBuildPipeline', {
+        const pipeline = new codepipeline.Pipeline(this, 'AmiBuildPipeline', {
             pipelineName: `AmiBuilder-${props.amiName}`,
             restartExecutionOnUpdate: false,
             stages: [
@@ -484,12 +484,15 @@ export class AmiBuildPipelineStack extends cdk.Stack {
                 {
                     stageName: 'Test',
                     actions: [testAction]
-                },
-                {
-                    stageName: 'Copy',
-                    actions: copyActions
                 }
             ]
         });
+
+        if (copyActions.length > 0) {
+            pipeline.addStage({
+                stageName: 'Copy',
+                actions: copyActions
+            });
+        }
     }
 }
