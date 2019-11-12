@@ -16,9 +16,9 @@ skel: $(TARGET)
 		$(if $(TARGET),,$(error TARGET must be specified))
 		cd example; \
 			for file in $(EXAMPLE_FILES); do \
-				cp -R $$file $(TARGET); \
+				cp -R $$file $(realpath $(TARGET)); \
 			done
-		git init $(TARGET)
+		git init $(realpath $(TARGET))
 
 $(TARGET):
-		install -d -m 755 $@
+		install -d -m 755 $(realpath $@)
