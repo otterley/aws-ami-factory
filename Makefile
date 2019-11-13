@@ -21,4 +21,4 @@ skel: $(TARGET)
 		git init $(realpath $(TARGET))
 
 $(TARGET):
-		install -d -m 755 $(realpath $@)
+		install -d -m 755 $@
