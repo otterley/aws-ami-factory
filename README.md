@@ -58,6 +58,10 @@ This repository contains:
 1. A local installation of [Docker](https://docs.docker.com/install/)
 2. A local installation of [Node.js](https://nodejs.org/) (currently 10.x LTS is
    supported) and [npm](https://www.npmjs.com/get-npm)
+3. An S3 bucket to store your AMI source code.  **The S3 bucket must have
+   versioning enabled.**  If the bucket is not associated with the same AWS
+   account as the one the build pipeline lives in, the bucket must have a policy
+   that trusts the builder's AWS account to read objects from it.
 
 We recommend using [nodenv](https://github.com/nodenv/nodenv) to install and manage
 Node.js versions.  It's available in Homebrew if you're a Mac or Linux user.
@@ -84,6 +88,7 @@ amiName: myApp
 instanceSubnetId: subnet-0d20f3cd7f6315965
 
 # The S3 bucket and key in which the AMI source lives (see below)
+# NOTE: This bucket must exist *in advance* and must have versioning enabled
 sourceS3Bucket: ami-source-4c709489
 sourceS3Key: example-ami.zip
 
