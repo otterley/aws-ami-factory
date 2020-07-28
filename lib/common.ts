@@ -8,6 +8,7 @@ import fs = require('fs');
 import yaml = require('js-yaml');
 import Ajv = require('ajv');
 import { spawnSync } from 'child_process';
+import { Pipe } from 'stream';
 
 const SchemaPath = path.join(__dirname, '..', 'pipeline-config-schema.json');
 const ConfigPath = path.join(__dirname, '..', 'pipeline-config.yaml');
@@ -37,7 +38,7 @@ export interface PipelineConfig {
 
 export function getConfig(): PipelineConfig {
     const schema = JSON.parse(fs.readFileSync(SchemaPath).toString());
-    const config: PipelineConfig = yaml.safeLoad(fs.readFileSync(ConfigPath).toString());
+    const config: PipelineConfig = yaml.safeLoad(fs.readFileSync(ConfigPath).toString()) as PipelineConfig;
 
     const ajv = new Ajv();
     const valid = ajv.validate(schema, config);

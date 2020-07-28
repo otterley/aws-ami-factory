@@ -137,7 +137,10 @@ export class AmiBuildPipelineStack extends cdk.Stack {
         const uploadTrail = new cloudtrail.Trail(this, 'UploadTrail');
 
         uploadTrail.addS3EventSelector(
-            [sourceBucket.bucketArn + '/' + props.sourceS3Key],
+            [{
+                bucket: sourceBucket,
+                objectPrefix: props.sourceS3Key
+            }],
             {
                 includeManagementEvents: false,
                 readWriteType: cloudtrail.ReadWriteType.WRITE_ONLY
