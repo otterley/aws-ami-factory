@@ -9,7 +9,7 @@
     "test": "test"
   },
   "dependencies": {
-    "aws-sdk": "^2.530.0",
+    "aws-sdk": "^2.814.0",
     "date-unit-ms": "^1.1.13",
     "jsonfile": "^5.0.0",
     "tmp": "^0.1.0",
